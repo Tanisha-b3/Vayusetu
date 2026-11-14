@@ -8,7 +8,7 @@
     "dev": "node --watch server/index.js",
     "demo": "node server/scripts/demo.js",
     "client": "npm run dev --prefix client",
-    "build": "npm run build --prefix client"
+    "build": "npm --prefix client install && npm --prefix client run build"
   },
   "engines": { "node": ">=18" },
   "dependencies": {

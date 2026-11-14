@@ -142,3 +142,5 @@ api.post('/reports/:id/ask', wrap(async (req, res) => {
   if (!req.body.question) { const e = new Error('question is required'); e.status = 400; throw e; }
   res.json(await gen.ask(r, req.body.question, req.body.role));
 }));
+
+api.all('*', (_req, res) => res.status(404).json({ error: 'API endpoint not found' }));

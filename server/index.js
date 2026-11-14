@@ -23,4 +23,4 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: err.message, code: err.code });
 });
 
-app.listen(config.port, () => console.log(`VayuSetu API on http://localhost:${config.port}/api/health`));
+app.listen(config.port, '0.0.0.0', () => console.log(`VayuSetu running on port ${config.port}`));
