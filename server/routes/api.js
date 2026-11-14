@@ -14,6 +14,8 @@ import { runAnalysisPipeline } from '../services/agents/pipeline.js';
 import * as gen from '../services/generate.js';
 import { renderDocument } from '../services/render.js';
 import { saveReport, getReport, listReports, findPrevious } from '../store.js';
+import { createUser, findUserByEmail, findUserById, publicUser } from '../users.js';
+import { hashPassword, verifyPassword, signToken, verifyToken } from '../services/auth.js';
 import { ROLES, LANGUAGES, LEVELS } from '../prompts/index.js';
 import { hasKey, activeProvider } from '../services/gemini.js';
 
@@ -290,72 +292,108 @@ api.post(
   })
 );
 
-// ---- Authentication Endpoints (Prompt 13) ----
-const USERS_STORE = new Map([
-  [
-    'demo@vayusetu.gov.in',
-    {
-      id: 'demo_ward_1',
+// ---- Authentication: real credential checks (see services/auth.js, users.js) ----
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const httpError = (status, message) => Object.assign(new Error(message), { status });
+
+// Simple in-memory limit on login attempts per IP (10 per 15 minutes) to slow password guessing.
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX = 10;
+function checkLoginRate(ip) {
+  const now = Date.now();
+  const recent = (loginAttempts.get(ip) || []).filter((t) => now - t < LOGIN_WINDOW_MS);
+  if (recent.length >= LOGIN_MAX) throw httpError(429, 'Too many sign-in attempts. Try again in a few minutes.');
+  recent.push(now);
+  loginAttempts.set(ip, recent);
+}
+
+api.post(
+  '/auth/signup',
+  wrap(async (req, res) => {
+    const { name, email, password, role, organization, city, ward, language } = req.body || {};
+    if (!name || !String(name).trim()) throw httpError(400, 'Name is required.');
+    if (!email || !EMAIL_RE.test(String(email).trim())) throw httpError(400, 'Enter a valid email address.');
+    if (!password || String(password).length < 8) throw httpError(400, 'Password must be at least 8 characters.');
+    if (String(password).length > 200) throw httpError(400, 'Password is too long.');
+
+    const user = await createUser({
+      id: 'usr_' + crypto.randomBytes(8).toString('hex'),
+      name: String(name).trim().slice(0, 100),
+      email: String(email).trim(),
+      passwordHash: hashPassword(password),
+      role: pick(role, ROLES, 'ward_officer'),
+      organization: organization ? String(organization).slice(0, 150) : 'Civic Administration',
+      city: city ? String(city).slice(0, 80) : 'Bhopal',
+      ward: ward ? String(ward).slice(0, 80) : 'Zone 1',
+      language: pick(language, LANGUAGES, 'en'),
+      createdAt: new Date().toISOString(),
+    });
+    res.status(201).json({ success: true, user: publicUser(user), token: signToken(user.id) });
+  })
+);
+
+// Demo account for reviewers. Created on first use, so it also exists after a data reset.
+// Override with DEMO_EMAIL / DEMO_PASSWORD, or disable entirely with DEMO_ACCOUNT=off.
+const demoEnabled = () => process.env.DEMO_ACCOUNT !== 'off';
+const demoCreds = () => ({
+  email: process.env.DEMO_EMAIL || 'demo@vayusetu.gov.in',
+  password: process.env.DEMO_PASSWORD || 'password123',
+});
+async function ensureDemoUser() {
+  if (!demoEnabled()) return;
+  const { email, password } = demoCreds();
+  if (await findUserByEmail(email)) return;
+  try {
+    await createUser({
+      id: 'usr_demo',
       name: 'Ashok Sharma',
-      email: 'demo@vayusetu.gov.in',
-      password: 'password123',
+      email,
+      passwordHash: hashPassword(password),
       role: 'ward_officer',
       organization: 'Bhopal Municipal Corporation',
       city: 'Bhopal',
       ward: 'Zone 8, Ward 42',
       language: 'hi',
-    },
-  ],
-]);
-
-api.post('/auth/signup', (req, res) => {
-  const { name, email, password, role, organization, city, ward, language } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password required' });
+      createdAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    if (e.status !== 409) throw e; // already created by a concurrent request
   }
-  const user = {
-    id: 'usr_' + Date.now(),
-    name: name || email.split('@')[0],
-    email,
-    password,
-    role: role || 'ward_officer',
-    organization: organization || 'Civic Administration',
-    city: city || 'Bhopal',
-    ward: ward || 'Zone 1',
-    language: language || 'en',
-  };
-  USERS_STORE.set(email.toLowerCase(), user);
-  const token = 'jwt_' + crypto.randomBytes(16).toString('hex');
-  const safeUser = { ...user };
-  delete safeUser.password;
-  res.json({ success: true, user: safeUser, token });
+}
+
+api.get('/auth/demo', (_req, res) => {
+  if (!demoEnabled()) return res.json({ enabled: false });
+  res.json({ enabled: true, ...demoCreds() });
 });
 
-api.post('/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
-  }
-  let user = USERS_STORE.get(email.toLowerCase());
-  if (!user) {
-    // Auto-create for demo resilience if password given
-    user = {
-      id: 'usr_' + Date.now(),
-      name: email.split('@')[0].replace(/[._]/g, ' '),
-      email,
-      role: 'ward_officer',
-      organization: 'Civic Administration',
-      city: 'Bhopal',
-      ward: 'Zone 8, Ward 42',
-      language: 'hi',
-    };
-    USERS_STORE.set(email.toLowerCase(), user);
-  }
-  const token = 'jwt_' + crypto.randomBytes(16).toString('hex');
-  const safeUser = { ...user };
-  delete safeUser.password;
-  res.json({ success: true, user: safeUser, token });
-});
+api.post(
+  '/auth/login',
+  wrap(async (req, res) => {
+    checkLoginRate(req.ip);
+    const { email, password } = req.body || {};
+    if (!email || !password) throw httpError(400, 'Email and password are required.');
+    await ensureDemoUser();
+    const user = await findUserByEmail(email);
+    // Same message for unknown email and wrong password, so accounts can't be enumerated.
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      throw httpError(401, 'Invalid email or password.');
+    }
+    res.json({ success: true, user: publicUser(user), token: signToken(user.id) });
+  })
+);
+
+api.get(
+  '/auth/me',
+  wrap(async (req, res) => {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const userId = verifyToken(token);
+    if (!userId) throw httpError(401, 'Not signed in.');
+    const user = await findUserById(userId);
+    if (!user) throw httpError(401, 'Not signed in.');
+    res.json({ user: publicUser(user) });
+  })
+);
 
 api.post('/auth/logout', (_req, res) => {
   res.json({ success: true });

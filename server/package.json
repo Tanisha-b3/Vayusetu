@@ -10,7 +10,8 @@
     "demo": "node scripts/demo.js",
     "test:ugly": "node scripts/test-ugly-csvs.js",
     "test:agents": "node scripts/test-agents.js",
-    "test": "node scripts/test-ugly-csvs.js"
+    "test": "node scripts/test-ugly-csvs.js",
+    "test:unit": "node --test test/auth-and-upload.test.js"
   },
   "engines": {
     "node": ">=18"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate, useParams, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, useParams, useLocation, Navigate } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
 import { DataQualityCard } from './components/DataQualityCard';
 import { AirQualityMap } from './components/AirQualityMap';
@@ -55,7 +55,7 @@ function StudioApp() {
   const { tab } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, isAuthenticated, demoLogin } = useAuthStore();
+  const { user } = useAuthStore();
 
   // Map URL param to tab id
   const tabSlugMap = {
@@ -94,13 +94,6 @@ function StudioApp() {
   const [asking, setAsking] = useState(false);
   const [runningPipeline, setRunningPipeline] = useState(false);
   const [remapping, setRemapping] = useState(false);
-
-  // Auto-init user if none
-  useEffect(() => {
-    if (!isAuthenticated) {
-      demoLogin('ward_officer');
-    }
-  }, [isAuthenticated, demoLogin]);
 
   // Open upload modal if route is /app/new-brief
   useEffect(() => {
@@ -651,6 +644,22 @@ function StudioApp() {
   );
 }
 
+// Studio pages require a signed-in user; everyone else is sent to the sign-in page.
+function RequireAuth({ children }) {
+  const { isAuthenticated, verifySession } = useAuthStore();
+  const location = useLocation();
+
+  // Confirm a saved token with the server (signs out if it is expired or invalid).
+  useEffect(() => {
+    verifySession();
+  }, [verifySession]);
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  return children;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -661,7 +670,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/styleguide" element={<StyleguidePage />} />
         <Route path="/app" element={<Navigate to="/app/dashboard" replace />} />
-        <Route path="/app/:tab" element={<StudioApp />} />
+        <Route path="/app/:tab" element={<RequireAuth><StudioApp /></RequireAuth>} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>

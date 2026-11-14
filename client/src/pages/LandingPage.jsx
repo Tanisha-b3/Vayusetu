@@ -37,7 +37,12 @@ import { Badge, AQIBadge, ConfidenceBadge, Button } from '../components/ui';
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { demoLogin, isAuthenticated } = useAuthStore();
+  const { demoLogin, isAuthenticated, verifySession } = useAuthStore();
+
+  // If a saved session has expired, drop it so the header shows "Sign in" instead of "Go to Studio".
+  useEffect(() => {
+    verifySession();
+  }, [verifySession]);
   const [selectedAudience, setSelectedAudience] = useState('ward');
   const [selectedLang, setSelectedLang] = useState('en');
   const [readingLevel, setReadingLevel] = useState('standard');
@@ -63,27 +68,27 @@ export default function LandingPage() {
   const sampleAdvisories = {
     en: {
       standard:
-        'Air Quality in Ward 42 has crossed Moderate levels into Poor (AQI 224, PM2.5: 118 Âµg/mÂ³). Outdoor municipal sweepers must deploy wet-mist dampening along Hamidia Road immediately [R12]. Residents with asthma and young children should avoid unmasked morning exertion.',
+        'Air Quality in Ward 42 has crossed Moderate levels into Poor (AQI 224, PM2.5: 118 µg/m³). Outdoor municipal sweepers must deploy wet-mist dampening along Hamidia Road immediately [R12]. Residents with asthma and young children should avoid unmasked morning exertion.',
       simple:
         'The air outside today is unhealthy to breathe. If you have breathing trouble or elders at home, keep windows shut between 6 AM and 10 AM. Wear a mask if stepping onto dusty main roads.',
     },
     hi: {
       standard:
-        'à¤µà¤¾à¤°à¥à¤¡ 42 à¤®à¥‡à¤‚ à¤µà¤¾à¤¯à¥ à¤—à¥à¤£à¤µà¤¤à¥à¤¤à¤¾ à¤®à¤§à¥à¤¯à¤® à¤¸à¥à¤¤à¤° à¤•à¥‹ à¤ªà¤¾à¤° à¤•à¤° "à¤–à¤°à¤¾à¤¬" à¤¶à¥à¤°à¥‡à¤£à¥€ (AQI 224, PM2.5: 118 Âµg/mÂ³) à¤®à¥‡à¤‚ à¤ªà¤¹à¥à¤‚à¤š à¤—à¤ˆ à¤¹à¥ˆà¥¤ à¤¹à¤®à¥€à¤¦à¤¿à¤¯à¤¾ à¤°à¥‹à¤¡ à¤ªà¤° à¤¨à¤—à¤° à¤¨à¤¿à¤—à¤® à¤¦à¥à¤µà¤¾à¤°à¤¾ à¤¤à¤¤à¥à¤•à¤¾à¤² à¤ªà¤¾à¤¨à¥€ à¤•à¤¾ à¤›à¤¿à¤¡à¤¼à¤•à¤¾à¤µ à¤•à¤¿à¤¯à¤¾ à¤œà¤¾à¤¨à¤¾ à¤šà¤¾à¤¹à¤¿à¤ [R12]à¥¤ à¤…à¤¸à¥à¤¥à¤®à¤¾ à¤ªà¥€à¤¡à¤¼à¤¿à¤¤ à¤”à¤° à¤¬à¤šà¥à¤šà¥‡ à¤¸à¥à¤¬à¤¹ à¤¬à¤¾à¤¹à¤° à¤œà¤¾à¤¨à¥‡ à¤¸à¥‡ à¤¬à¤šà¥‡à¤‚à¥¤',
+        'वार्ड 42 में वायु गुणवत्ता मध्यम स्तर को पार कर "खराब" श्रेणी (AQI 224, PM2.5: 118 µg/m³) में पहुंच गई है। हमीदिया रोड पर नगर निगम द्वारा तत्काल पानी का छिड़काव किया जाना चाहिए [R12]। अस्थमा पीड़ित और बच्चे सुबह बाहर जाने से बचें।',
       simple:
-        'à¤†à¤œ à¤¹à¤µà¤¾ à¤®à¥‡à¤‚ à¤§à¥‚à¤² à¤”à¤° à¤§à¥à¤†à¤‚ à¤œà¥à¤¯à¤¾à¤¦à¤¾ à¤¹à¥ˆà¥¤ à¤¬à¥à¤œà¥à¤°à¥à¤— à¤”à¤° à¤¬à¤šà¥à¤šà¥‡ à¤¸à¥à¤¬à¤¹ à¤Ÿà¤¹à¤²à¤¨à¥‡ à¤¸à¥‡ à¤¬à¤šà¥‡à¤‚à¥¤ à¤˜à¤° à¤•à¥€ à¤–à¤¿à¤¡à¤¼à¤•à¤¿à¤¯à¤¾à¤‚ à¤¬à¤‚à¤¦ à¤°à¤–à¥‡à¤‚ à¤”à¤° à¤¬à¤¾à¤¹à¤° à¤¨à¤¿à¤•à¤²à¤¤à¥‡ à¤¸à¤®à¤¯ à¤®à¤¾à¤¸à¥à¤• à¤…à¤µà¤¶à¥à¤¯ à¤ªà¤¹à¤¨à¥‡à¤‚à¥¤',
+        'आज हवा में धूल और धुआं ज्यादा है। बुजुर्ग और बच्चे सुबह टहलने से बचें। घर की खिड़कियां बंद रखें और बाहर निकलते समय मास्क अवश्य पहनें।',
     },
     mr: {
       standard:
-        'à¤ªà¥à¤°à¤­à¤¾à¤— à¤•à¥à¤°. 42 à¤®à¤§à¥€à¤² à¤¹à¤µà¥‡à¤šà¥€ à¤—à¥à¤£à¤µà¤¤à¥à¤¤à¤¾ "à¤…à¤¸à¥à¤µà¤¸à¥à¤¥" à¤¶à¥à¤°à¥‡à¤£à¥€à¤¤ (AQI 224, PM2.5: 118 Âµg/mÂ³) à¤ªà¥‹à¤¹à¥‹à¤šà¤²à¥€ à¤†à¤¹à¥‡. à¤¹à¤®à¥€à¤¦à¤¿à¤¯à¤¾ à¤®à¤¾à¤°à¥à¤—à¤¾à¤µà¤° à¤¤à¤¾à¤¤à¥à¤•à¤¾à¤³ à¤§à¥‚à¤³ à¤ªà¥à¤°à¤¤à¤¿à¤¬à¤‚à¤§à¤• à¤ªà¤¾à¤£à¥à¤¯à¤¾à¤šà¥‡ à¤«à¤µà¤¾à¤°à¥‡ à¤®à¤¾à¤°à¤¾à¤µà¥‡à¤¤ [R12]. à¤¶à¥à¤µà¤¸à¤¨à¤¾à¤šà¥‡ à¤µà¤¿à¤•à¤¾à¤° à¤…à¤¸à¤²à¥‡à¤²à¥à¤¯à¤¾ à¤¨à¤¾à¤—à¤°à¤¿à¤•à¤¾à¤‚à¤¨à¥€ à¤µ à¤¬à¤¾à¤²à¤•à¤¾à¤‚à¤¨à¥€ à¤¬à¤¾à¤¹à¥‡à¤° à¤«à¤¿à¤°à¤£à¥‡ à¤Ÿà¤¾à¤³à¤¾à¤µà¥‡.',
+        'प्रभाग क्र. 42 मधील हवेची गुणवत्ता "अस्वस्थ" श्रेणीत (AQI 224, PM2.5: 118 µg/m³) पोहोचली आहे. हमीदिया मार्गावर तात्काळ धूळ प्रतिबंधक पाण्याचे फवारे मारावेत [R12]. श्वसनाचे विकार असलेल्या नागरिकांनी व बालकांनी बाहेर फिरणे टाळावे.',
       simple:
-        'à¤†à¤œ à¤¹à¤µà¥‡à¤¤à¥€à¤² à¤ªà¥à¤°à¤¦à¥‚à¤·à¤£ à¤µà¤¾à¤¢à¤²à¥‡ à¤†à¤¹à¥‡. à¤²à¤¹à¤¾à¤¨ à¤®à¥à¤²à¥‡ à¤†à¤£à¤¿ à¤µà¥ƒà¤¦à¥à¤§ à¤µà¥à¤¯à¤•à¥à¤¤à¥€à¤‚à¤¨à¥€ à¤¸à¤•à¤¾à¤³à¥€ à¤®à¥‹à¤•à¤³à¥à¤¯à¤¾ à¤¹à¤µà¥‡à¤¤ à¤œà¤¾à¤£à¥‡ à¤Ÿà¤¾à¤³à¤¾à¤µà¥‡. à¤˜à¤°à¤¾à¤¬à¤¾à¤¹à¥‡à¤° à¤ªà¤¡à¤¤à¤¾à¤¨à¤¾ à¤®à¤¾à¤¸à¥à¤• à¤µà¤¾à¤ªà¤°à¤¾.',
+        'आज हवेतील प्रदूषण वाढले आहे. लहान मुले आणि वृद्ध व्यक्तींनी सकाळी मोकळ्या हवेत जाणे टाळावे. घराबाहेर पडताना मास्क वापरा.',
     },
     ta: {
       standard:
-        'à®µà®¾à®°à¯à®Ÿà¯ 42-à®²à¯ à®•à®¾à®±à¯à®±à®¿à®©à¯ à®¤à®°à®®à¯ "à®®à¯‹à®šà®®à®¾à®©à®¤à¯" à®Žà®©à¯à®± à®¨à®¿à®²à¯ˆà®¯à¯ˆ à®Žà®Ÿà¯à®Ÿà®¿à®¯à¯à®³à¯à®³à®¤à¯ (AQI 224, PM2.5: 118 Âµg/mÂ³). à®¹à®®à®¿à®¤à®¿à®¯à®¾ à®šà®¾à®²à¯ˆà®¯à®¿à®²à¯ à®‰à®Ÿà®©à®Ÿà®¿à®¯à®¾à®• à®¨à¯€à®°à¯à®¤à¯à®¤à¯à®³à®¿à®•à®³à¯ à®¤à¯†à®³à®¿à®•à¯à®•à®ªà¯à®ªà®Ÿ à®µà¯‡à®£à¯à®Ÿà¯à®®à¯ [R12]. à®†à®¸à¯à®¤à¯à®®à®¾ à®ªà®¾à®¤à®¿à®ªà¯à®ªà¯ à®‰à®³à¯à®³à®µà®°à¯à®•à®³à¯ à®•à®¾à®²à¯ˆ à®¨à®Ÿà¯ˆà®ªà¯à®ªà®¯à®¿à®±à¯à®šà®¿à®¯à¯ˆ à®¤à®µà®¿à®°à¯à®•à¯à®•à®µà¯à®®à¯.',
+        'வார்டு 42-ல் காற்றின் தரம் "மோசமானது" என்ற நிலையை எட்டியுள்ளது (AQI 224, PM2.5: 118 µg/m³). ஹமிதியா சாலையில் உடனடியாக நீர்த்துளிகள் தெளிக்கப்பட வேண்டும் [R12]. ஆஸ்துமா பாதிப்பு உள்ளவர்கள் காலை நடைப்பயிற்சியை தவிர்க்கவும்.',
       simple:
-        'à®‡à®©à¯à®±à¯ˆà®¯ à®•à®¾à®±à¯à®±à¯ à®šà¯à®µà®¾à®šà®¿à®•à¯à®• à®¨à®²à¯à®²à®¤à®²à¯à®². à®•à¯à®´à®¨à¯à®¤à¯ˆà®•à®³à¯ à®®à®±à¯à®±à¯à®®à¯ à®®à¯à®¤à®¿à®¯à®µà®°à¯à®•à®³à¯ à®•à®¾à®²à¯ˆà®¯à®¿à®²à¯ à®µà¯†à®³à®¿à®¯à¯‡ à®šà¯†à®²à¯à®µà®¤à¯ˆ à®¤à®µà®¿à®°à¯à®•à¯à®•à®µà¯à®®à¯. à®¤à¯‚à®šà®¿ à®¨à®¿à®±à¯ˆà®¨à¯à®¤ à®‡à®Ÿà®™à¯à®•à®³à¯à®•à¯à®•à¯à®šà¯ à®šà¯†à®²à¯à®²à¯à®®à¯à®ªà¯‹à®¤à¯ à®®à¯à®•à®•à¯à®•à®µà®šà®®à¯ à®…à®£à®¿à®¯à¯à®™à¯à®•à®³à¯.',
+        'இன்றைய காற்று சுவாசிக்க நல்லதல்ல. குழந்தைகள் மற்றும் முதியவர்கள் காலையில் வெளியே செல்வதை தவிர்க்கவும். தூசி நிறைந்த இடங்களுக்குச் செல்லும்போது முகக்கவசம் அணியுங்கள்.',
     },
   };
 
@@ -115,7 +120,7 @@ export default function LandingPage() {
       subtitle: 'Target mechanical misting and road sweepers where PM10 peaks, with legal-grade row citations.',
       badge: 'Municipal Authority',
       actions: [
-        { title: 'Deploy Water Mist Sprinkler to Hamidia Road', why: 'PM10 hit 248 Âµg/mÂ³ at 08:30 during morning peak [R12]', timeframe: 'Now', effort: 'Low' },
+        { title: 'Deploy Water Mist Sprinkler to Hamidia Road', why: 'PM10 hit 248 µg/m³ at 08:30 during morning peak [R12]', timeframe: 'Now', effort: 'Low' },
         { title: 'Inspect Uncovered Sand Dumps at MP Nagar Zone II', why: 'Suspended dust increased by +34% over baseline [R45]', timeframe: 'Today', effort: 'Med' },
         { title: 'Enforce Construction Dust Barricades at Metro Pillar 14', why: 'Downwind sensor logged 3 consecutive severe spikes [R88]', timeframe: 'This week', effort: 'High' },
       ],
@@ -382,24 +387,24 @@ export default function LandingPage() {
                 <AlertTriangle className="w-4 h-4" /> BEFORE: Messy Raw Sheet
               </span>
               <span className="text-[10px] bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-2 py-0.5 rounded font-mono">
-                No citations â€¢ High error risk
+                No citations • High error risk
               </span>
             </div>
             <div className="font-mono text-xs text-ink-700 dark:text-cream-400 bg-white/70 dark:bg-black/40 p-4 rounded-xl border border-red-500/10 space-y-2 overflow-x-auto">
               <p className="text-gray-400">Date/Time, Stn, Param1, Unit, Val</p>
               <p className="text-red-600">2026-11-14 06:00, "Hamidia Rd", PM2.5, ug/m3, 999.0 &lt;-- Sensor Glitch?</p>
-              <p>2026-11-14 06:15, "à¤¹à¤®à¥€à¤¦à¤¿à¤¯à¤¾", à¤ªà¥€à¤à¤®à¥¨.à¥«, ?, 118</p>
+              <p>2026-11-14 06:15, "हमीदिया", पीएम२.५, ?, 118</p>
               <p className="text-amber-600">2026-11-14 07:00, "Arera", "PM10", ug, 0.0 &lt;-- Stuck flatline</p>
             </div>
             <ul className="text-xs space-y-2 text-ink-700 dark:text-cream-300">
               <li className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                âœ• Mixed English and Hindi column headers fail typical scripts
+                ✕ Mixed English and Hindi column headers fail typical scripts
               </li>
               <li className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                âœ• Extreme outliers bias the ward average if left unquarantined
+                ✕ Extreme outliers bias the ward average if left unquarantined
               </li>
               <li className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                âœ• Generic LLM summaries hallucinate station numbers and advice
+                ✕ Generic LLM summaries hallucinate station numbers and advice
               </li>
             </ul>
           </div>
@@ -423,20 +428,20 @@ export default function LandingPage() {
                 <AQIBadge band="Poor" aqi={224} />
               </div>
               <p className="text-xs text-ink-700 dark:text-cream-300 leading-relaxed">
-                "Hamidia Road logged verified PM2.5 of 118 Âµg/mÂ³ <span className="citation-chip">[R12]</span>.
+                "Hamidia Road logged verified PM2.5 of 118 µg/m³ <span className="citation-chip">[R12]</span>.
                 Sensors at Arera were quarantined due to zero variance <span className="citation-chip">[R18]</span>.
                 Action needed: Deploy mechanical mist sweepers between 7 AM and 10 AM."
               </p>
             </div>
             <ul className="text-xs space-y-2 text-ink-700 dark:text-cream-300">
               <li className="flex items-center gap-2 text-teal-primary dark:text-teal-400 font-medium">
-                âœ“ SchemaAgent maps Hindi headers without touching raw readings
+                ✓ SchemaAgent maps Hindi headers without touching raw readings
               </li>
               <li className="flex items-center gap-2 text-teal-primary dark:text-teal-400 font-medium">
-                âœ“ Every sentence verified: cited row, station, and number checked
+                ✓ Every sentence verified: cited row, station, and number checked
               </li>
               <li className="flex items-center gap-2 text-teal-primary dark:text-teal-400 font-medium">
-                âœ“ WhatsApp ready plain-text and A4 notice-board printable PDF
+                ✓ WhatsApp ready plain-text and A4 notice-board printable PDF
               </li>
             </ul>
           </div>
@@ -635,7 +640,7 @@ export default function LandingPage() {
                 <CheckCircle2 className="w-5 h-5 text-teal-primary shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-sm font-bold text-ink-900 dark:text-white">Numeric Accuracy Check</h4>
-                  <p className="text-xs text-ink-600 dark:text-cream-400">If the sentence states 118 Âµg/mÂ³, the cited row must match within Â±2% rounding tolerance.</p>
+                  <p className="text-xs text-ink-600 dark:text-cream-400">If the sentence states 118 µg/m³, the cited row must match within ±2% rounding tolerance.</p>
                 </div>
               </div>
 
@@ -671,10 +676,10 @@ export default function LandingPage() {
                     <span className="text-[10px] bg-emerald-200 dark:bg-emerald-900 px-1.5 py-0.2 rounded font-bold">Passed 3/3</span>
                   </div>
                   <p className="text-xs font-sans">
-                    "Hamidia Road experienced peak PM2.5 of 118 Âµg/mÂ³ at 08:30 <span className="citation-chip">[R12]</span>."
+                    "Hamidia Road experienced peak PM2.5 of 118 µg/m³ at 08:30 <span className="citation-chip">[R12]</span>."
                   </p>
                   <p className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-1 font-mono">
-                    âœ“ Row R12 exists | Value 118 matches 118.4 | Stn "Hamidia Rd" matches
+                    ✓ Row R12 exists | Value 118 matches 118.4 | Stn "Hamidia Rd" matches
                   </p>
                 </div>
 
@@ -684,10 +689,10 @@ export default function LandingPage() {
                     <span className="text-[10px] bg-amber-200 dark:bg-amber-900 px-1.5 py-0.2 rounded font-bold">Removed from Output</span>
                   </div>
                   <p className="text-xs font-sans line-through opacity-70">
-                    "Citywide PM2.5 jumped to 450 Âµg/mÂ³ across all residential wards."
+                    "Citywide PM2.5 jumped to 450 µg/m³ across all residential wards."
                   </p>
                   <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1 font-mono">
-                    âœ• No citation provided for extreme claim; automatically scrubbed by verify.js
+                    ✕ No citation provided for extreme claim; automatically scrubbed by verify.js
                   </p>
                 </div>
               </div>
@@ -716,9 +721,9 @@ export default function LandingPage() {
             <div className="flex items-center gap-1.5">
               {[
                 { id: 'en', label: 'English' },
-                { id: 'hi', label: 'à¤¹à¤¿à¤‚à¤¦à¥€ (Hindi)' },
-                { id: 'mr', label: 'à¤®à¤°à¤¾à¤ à¥€ (Marathi)' },
-                { id: 'ta', label: 'à®¤à®®à®¿à®´à¯ (Tamil)' },
+                { id: 'hi', label: 'हिंदी (Hindi)' },
+                { id: 'mr', label: 'मराठी (Marathi)' },
+                { id: 'ta', label: 'தமிழ் (Tamil)' },
               ].map((lang) => (
                 <button
                   key={lang.id}
@@ -812,7 +817,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="p-6 rounded-2xl bg-white dark:bg-ink-900 border border-[#10201C]/10 dark:border-white/10 space-y-3">
               <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold text-lg">
-                ðŸ‘¶
+                👶
               </div>
               <h3 className="font-heading text-lg font-bold text-ink-900 dark:text-white">Children & Infants</h3>
               <p className="text-xs text-ink-600 dark:text-cream-400 leading-relaxed">
@@ -822,7 +827,7 @@ export default function LandingPage() {
 
             <div className="p-6 rounded-2xl bg-white dark:bg-ink-900 border border-[#10201C]/10 dark:border-white/10 space-y-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold text-lg">
-                ðŸ‘µ
+                👵
               </div>
               <h3 className="font-heading text-lg font-bold text-ink-900 dark:text-white">Older Adults</h3>
               <p className="text-xs text-ink-600 dark:text-cream-400 leading-relaxed">
@@ -832,7 +837,7 @@ export default function LandingPage() {
 
             <div className="p-6 rounded-2xl bg-white dark:bg-ink-900 border border-[#10201C]/10 dark:border-white/10 space-y-3">
               <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center font-bold text-lg">
-                ðŸ«
+                🫁
               </div>
               <h3 className="font-heading text-lg font-bold text-ink-900 dark:text-white">Asthma & Respiratory</h3>
               <p className="text-xs text-ink-600 dark:text-cream-400 leading-relaxed">
@@ -889,7 +894,7 @@ export default function LandingPage() {
             </div>
             <div>
               <span className="font-heading font-bold text-sm text-[#10201C] dark:text-white">
-                VayuSetu (à¤µà¤¾à¤¯à¥à¤¸à¥‡à¤¤à¥)
+                VayuSetu (वायुसेतु)
               </span>
               <p className="text-[11px] text-ink-500">AI Civic Air Quality Studio for India</p>
             </div>
@@ -904,7 +909,7 @@ export default function LandingPage() {
           </div>
 
           <p className="text-[11px] text-ink-500">
-            Â© 2026 VayuSetu Project. Open civic-tech.
+            © 2026 VayuSetu Project. Open civic-tech.
           </p>
         </div>
       </footer>

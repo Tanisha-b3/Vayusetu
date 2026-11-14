@@ -127,6 +127,8 @@ export default function SignupPage() {
     const res = await signup(formData);
     if (res.success) {
       navigate('/app/dashboard');
+    } else {
+      setErrors({ form: res.error });
     }
   };
 
@@ -454,6 +456,7 @@ export default function SignupPage() {
                   </span>
                 </label>
                 {errors.terms && <p className="text-[11px] text-red-500">{errors.terms}</p>}
+                {errors.form && <p className="text-[11px] text-red-500" role="alert">{errors.form}</p>}
               </motion.div>
             )}
           </AnimatePresence>

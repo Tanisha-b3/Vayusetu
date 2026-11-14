@@ -1,5 +1,40 @@
 import { create } from 'zustand';
 
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+// Calls the auth API. Throws with the server's message when the credentials are rejected.
+async function postAuth(path, body, fallbackMessage) {
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error('Cannot reach the server. Check your connection and try again.');
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.token) {
+    throw new Error(data?.error || `${fallbackMessage} (HTTP ${res.status})`);
+  }
+  return data;
+}
+
+function saveSession(user, token) {
+  localStorage.setItem('vayusetu_user', JSON.stringify(user));
+  localStorage.setItem('vayusetu_token', token);
+}
+
+// One-time reset: earlier builds auto-signed every visitor in as a demo user and accepted any
+// password, leaving fake sessions in localStorage. Dropping them here makes everyone sign in again.
+const AUTH_VERSION = '2';
+if (localStorage.getItem('vayusetu_auth_version') !== AUTH_VERSION) {
+  localStorage.removeItem('vayusetu_user');
+  localStorage.removeItem('vayusetu_token');
+  localStorage.setItem('vayusetu_auth_version', AUTH_VERSION);
+}
+
 export const useAuthStore = create((set, get) => {
   const savedUser = localStorage.getItem('vayusetu_user');
   const savedToken = localStorage.getItem('vayusetu_token');
@@ -14,41 +49,9 @@ export const useAuthStore = create((set, get) => {
     login: async (email, password) => {
       set({ isLoading: true, error: null });
       try {
-        // Try backend login if available, or authenticate locally
-        let userData = null;
-        let token = 'jwt_token_' + Date.now();
-        
-        try {
-          const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            userData = data.user;
-            token = data.token;
-          }
-        } catch {
-          // Fallback to local authentication for seamless demo
-        }
-
-        if (!userData) {
-          userData = {
-            id: 'usr_' + Date.now(),
-            name: email.split('@')[0].replace(/[._]/g, ' '),
-            email,
-            role: 'ward_officer',
-            organization: 'Municipal Corporation',
-            city: 'Bhopal',
-            ward: 'Ward 42',
-            language: 'en',
-          };
-        }
-
-        localStorage.setItem('vayusetu_user', JSON.stringify(userData));
-        localStorage.setItem('vayusetu_token', token);
-        set({ user: userData, token, isAuthenticated: true, isLoading: false });
+        const data = await postAuth('/auth/login', { email, password }, 'Sign-in failed.');
+        saveSession(data.user, data.token);
+        set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false });
         return { success: true };
       } catch (err) {
         set({ error: err.message, isLoading: false });
@@ -116,25 +119,45 @@ export const useAuthStore = create((set, get) => {
     signup: async (formData) => {
       set({ isLoading: true, error: null });
       try {
-        const newUser = {
-          id: 'usr_' + Date.now(),
-          name: formData.name,
-          email: formData.email,
-          role: formData.role || 'ward_officer',
-          organization: formData.organization || 'Civic Administration',
-          city: formData.city || 'Bhopal',
-          ward: formData.ward || 'Zone 1',
-          language: formData.language || 'en',
-        };
-        const token = 'jwt_token_' + Date.now();
-
-        localStorage.setItem('vayusetu_user', JSON.stringify(newUser));
-        localStorage.setItem('vayusetu_token', token);
-        set({ user: newUser, token, isAuthenticated: true, isLoading: false });
+        const data = await postAuth(
+          '/auth/signup',
+          {
+            name: formData.name,
+            email: formData.email,
+            password: formData.password,
+            role: formData.role,
+            organization: formData.organization,
+            city: formData.city,
+            ward: formData.ward,
+            language: formData.language,
+          },
+          'Sign-up failed.'
+        );
+        saveSession(data.user, data.token);
+        set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false });
         return { success: true };
       } catch (err) {
         set({ error: err.message, isLoading: false });
         return { success: false, error: err.message };
+      }
+    },
+
+    // Checks the saved token with the server. Offline-only demo sessions are skipped, and a
+    // network failure keeps the session so a flaky connection doesn't sign people out.
+    verifySession: async () => {
+      const { token } = get();
+      if (!token || token.startsWith('demo_')) return;
+      try {
+        const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.status === 401) {
+          get().logout();
+        } else if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem('vayusetu_user', JSON.stringify(data.user));
+          set({ user: data.user });
+        }
+      } catch {
+        /* offline: keep the current session */
       }
     },
 

@@ -52,6 +52,16 @@ export default function LoginPage() {
 
   const [activeTestimonial, setActiveTestimonial] = useState(0);
 
+  // Demo credentials come from the server (null if the demo account is disabled or unreachable).
+  const [demoCreds, setDemoCreds] = useState(null);
+  React.useEffect(() => {
+    const base = import.meta.env.VITE_API_URL || '/api';
+    fetch(`${base}/auth/demo`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setDemoCreds(d?.enabled ? d : null))
+      .catch(() => setDemoCreds(null));
+  }, []);
+
   // Cycle testimonials every 6 seconds
   React.useEffect(() => {
     const timer = setInterval(() => {
@@ -145,6 +155,28 @@ export default function LoginPage() {
               1-Click Demo
             </button>
           </div>
+
+          {demoCreds && (
+            <div className="p-3 rounded-xl border border-obs-hairline bg-white/60 dark:bg-white/5 flex items-center justify-between gap-3 text-xs">
+              <div className="min-w-0">
+                <span className="font-bold block">Demo credentials</span>
+                <span className="font-mono text-ink-600 dark:text-cream-400 block truncate">
+                  {demoCreds.email} / {demoCreds.password}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail(demoCreds.email);
+                  setPassword(demoCreds.password);
+                  setFieldErrors({});
+                }}
+                className="shrink-0 px-3 py-1.5 rounded-lg border border-teal-primary/40 text-teal-primary hover:bg-teal-primary/10 transition-colors font-semibold"
+              >
+                Fill in
+              </button>
+            </div>
+          )}
 
           {error && (
             <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-500/30 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">

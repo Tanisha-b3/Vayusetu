@@ -9,11 +9,10 @@ import {
   TrendingDown,
   Layers,
   Sparkles,
-  History,
   AlertTriangle,
   CheckCircle2,
 } from 'lucide-react';
-import { GlassPanel, CitationPill, VerifiedStamp, Button, Sparkline } from './ui';
+import { GlassPanel, CitationPill, VerifiedStamp, Button } from './ui';
 
 export function ComparisonView({
   currentReport,
@@ -32,15 +31,28 @@ export function ComparisonView({
   const diff = comparison?.diff;
   const explanation = comparison?.explanation;
 
+  // All figures below come from the computed diff (server/services/compare.js), never hardcoded.
+  const locs = diff?.locations || [];
+  const pm25Pairs = locs.map((l) => l.metrics?.pm25).filter((m) => m && m.previous != null && m.current != null);
+  const avg = (xs) => (xs.length ? Math.round((xs.reduce((s, x) => s + x, 0) / xs.length) * 10) / 10 : null);
+  const cityPrev = avg(pm25Pairs.map((m) => m.previous));
+  const cityCurr = avg(pm25Pairs.map((m) => m.current));
+  const cityDelta = cityPrev != null && cityCurr != null ? Math.round((cityCurr - cityPrev) * 10) / 10 : null;
+  const newHotspots = diff?.newHotspots || [];
+  const resolvedHotspots = diff?.resolvedHotspots || [];
+  const persistingHotspots = (currentReport?.summary?.hotspots || []).filter(
+    (h) => !newHotspots.some((n) => n.key === h.key)
+  );
+  const tableRows = locs.filter((l) => l.metrics?.pm25?.previous != null || l.metrics?.pm25?.current != null);
+  const fmt = (v) => (v == null ? '—' : v);
+  const trendLabel = { worse: 'Worsened', better: 'Improved', stable: 'Stable' };
+
   // Swap handler
   const handleSwapBriefs = () => {
     if (selectedPrevId) {
       onCompare(selectedPrevId);
     }
   };
-
-  // Brief history points for line chart
-  const historyPoints = [142, 168, 155, 184, 224];
 
   return (
     <div className="space-y-6">
@@ -145,11 +157,13 @@ export function ComparisonView({
               Temporal Finding Verdict
             </span>
             <h3 className="font-display text-2xl font-bold text-obs-ink leading-snug">
-              Poorer overall: 2 new hotspots emerged, and citywide PM2.5 jumped +14.2 µg/m³.
+              {cityDelta == null
+                ? 'Citywide PM2.5 change unavailable: no station has readings in both reports.'
+                : `Citywide PM2.5 ${cityDelta > 0 ? 'rose' : cityDelta < 0 ? 'fell' : 'held steady'}${cityDelta !== 0 ? ` by ${Math.abs(cityDelta)} µg/m³` : ''}; ${newHotspots.length} new hotspot${newHotspots.length === 1 ? '' : 's'}, ${resolvedHotspots.length} resolved.`}
             </h3>
             <p className="text-xs text-obs-muted leading-relaxed">
-              {explanation ||
-                'Corridor stagnation around Hamidia and Berasia increased particulate loading, while Arera Colony sensor remained flatlined.'}
+              {explanation?.summary ||
+                `${diff.totals?.worsened ?? 0} location(s) worsened, ${diff.totals?.improved ?? 0} improved, ${diff.totals?.stable ?? 0} stable (PM2.5, AQI and PM10 combined).`}
             </p>
           </GlassPanel>
 
@@ -160,12 +174,12 @@ export function ComparisonView({
                 Hotspots Added (Worsened)
               </span>
               <div className="flex flex-wrap gap-1.5">
-                <span className="px-2.5 py-1 rounded-md bg-cpcb-verypoor/15 text-cpcb-verypoor text-xs font-bold">
-                  + Hamidia Road (224 AQI)
-                </span>
-                <span className="px-2.5 py-1 rounded-md bg-cpcb-verypoor/15 text-cpcb-verypoor text-xs font-bold">
-                  + Berasia Corridor
-                </span>
+                {newHotspots.length === 0 && <span className="text-xs text-obs-muted">None</span>}
+                {newHotspots.map((h) => (
+                  <span key={h.key} className="px-2.5 py-1 rounded-md bg-cpcb-verypoor/15 text-cpcb-verypoor text-xs font-bold">
+                    + {h.location}{h.band ? ` (${h.band})` : ''}
+                  </span>
+                ))}
               </div>
             </GlassPanel>
 
@@ -174,9 +188,12 @@ export function ComparisonView({
                 Hotspots Resolved (Improved)
               </span>
               <div className="flex flex-wrap gap-1.5">
-                <span className="px-2.5 py-1 rounded-md bg-cpcb-good/15 text-cpcb-good text-xs font-bold">
-                  ✓ Kolar Bypass (-18 µg/m³)
-                </span>
+                {resolvedHotspots.length === 0 && <span className="text-xs text-obs-muted">None</span>}
+                {resolvedHotspots.map((h) => (
+                  <span key={h.key} className="px-2.5 py-1 rounded-md bg-cpcb-good/15 text-cpcb-good text-xs font-bold">
+                    ✓ {h.location}{h.band ? ` (${h.band})` : ''}
+                  </span>
+                ))}
               </div>
             </GlassPanel>
 
@@ -185,9 +202,12 @@ export function ComparisonView({
                 Persisting Hotspots
               </span>
               <div className="flex flex-wrap gap-1.5">
-                <span className="px-2.5 py-1 rounded-md bg-obs-surface text-obs-ink border border-obs-hairline text-xs font-medium">
-                  • MP Nagar Zone II
-                </span>
+                {persistingHotspots.length === 0 && <span className="text-xs text-obs-muted">None</span>}
+                {persistingHotspots.map((h) => (
+                  <span key={h.key} className="px-2.5 py-1 rounded-md bg-obs-surface text-obs-ink border border-obs-hairline text-xs font-medium">
+                    • {h.location}
+                  </span>
+                ))}
               </div>
             </GlassPanel>
           </div>
@@ -215,31 +235,39 @@ export function ComparisonView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-obs-hairline">
-                    {[
-                      { name: 'Hamidia Road', prev: 88, curr: 118, delta: '+30', worse: true },
-                      { name: 'Berasia Road', prev: 140, curr: 194, delta: '+54', worse: true },
-                      { name: 'Kolar Bypass', prev: 58, curr: 42, delta: '-16', worse: false },
-                      { name: 'MP Nagar Zone II', prev: 92, curr: 96, delta: '+4', worse: true },
-                    ].map((row) => (
-                      <tr key={row.name} className="hover:bg-obs-surface/60">
-                        <td className="py-2.5 font-sans font-semibold text-obs-ink">{row.name}</td>
-                        <td className="py-2.5 text-obs-muted">{row.prev}</td>
-                        <td className="py-2.5 font-bold text-obs-ink">{row.curr}</td>
-                        <td className={`py-2.5 font-bold ${row.worse ? 'text-cpcb-verypoor' : 'text-cpcb-good'}`}>
-                          {row.delta} µg/m³
-                        </td>
-                        <td className="py-2.5 text-right">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
-                              row.worse ? 'bg-cpcb-verypoor/10 text-cpcb-verypoor' : 'bg-cpcb-good/10 text-cpcb-good'
-                            }`}
-                          >
-                            {row.worse ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                            <span>{row.worse ? 'Worsened' : 'Improved'}</span>
-                          </span>
+                    {tableRows.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-4 text-center font-sans text-obs-muted">
+                          No station has PM2.5 readings in both reports.
                         </td>
                       </tr>
-                    ))}
+                    )}
+                    {tableRows.map((row) => {
+                      const m = row.metrics.pm25;
+                      const worse = m.direction === 'worse';
+                      const better = m.direction === 'better';
+                      const deltaText = m.delta == null ? '—' : `${m.delta > 0 ? '+' : ''}${m.delta}`;
+                      return (
+                        <tr key={row.location} className="hover:bg-obs-surface/60">
+                          <td className="py-2.5 font-sans font-semibold text-obs-ink">{row.location}</td>
+                          <td className="py-2.5 text-obs-muted">{fmt(m.previous)}</td>
+                          <td className="py-2.5 font-bold text-obs-ink">{fmt(m.current)}</td>
+                          <td className={`py-2.5 font-bold ${worse ? 'text-cpcb-verypoor' : better ? 'text-cpcb-good' : 'text-obs-muted'}`}>
+                            {deltaText}{m.delta == null ? '' : ' µg/m³'}
+                          </td>
+                          <td className="py-2.5 text-right">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                                worse ? 'bg-cpcb-verypoor/10 text-cpcb-verypoor' : better ? 'bg-cpcb-good/10 text-cpcb-good' : 'bg-obs-surface text-obs-muted'
+                              }`}
+                            >
+                              {worse ? <ArrowUpRight className="w-3 h-3" /> : better ? <ArrowDownRight className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                              <span>{trendLabel[m.direction] || 'N/A'}</span>
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -260,7 +288,7 @@ export function ComparisonView({
                 <div className="absolute inset-0 bg-cpcb-poor/20 flex items-center justify-end p-4">
                   <div className="text-right">
                     <span className="text-[10px] font-mono uppercase font-bold text-cpcb-poor block">Today (Current)</span>
-                    <strong className="text-base text-obs-ink">224 AQI (Poor)</strong>
+                    <strong className="text-base text-obs-ink">{cityCurr == null ? '—' : `${cityCurr} µg/m³ PM2.5`}</strong>
                   </div>
                 </div>
 
@@ -271,7 +299,7 @@ export function ComparisonView({
                 >
                   <div>
                     <span className="text-[10px] font-mono uppercase font-bold text-cpcb-good block">Baseline (Prev)</span>
-                    <strong className="text-base text-obs-ink">142 AQI (Mod)</strong>
+                    <strong className="text-base text-obs-ink">{cityPrev == null ? '—' : `${cityPrev} µg/m³ PM2.5`}</strong>
                   </div>
                 </div>
 
@@ -300,27 +328,6 @@ export function ComparisonView({
             </GlassPanel>
           </div>
 
-          {/* BRIEF HISTORY TIMELINE LINE CHART */}
-          <GlassPanel className="p-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <History className="w-4 h-4 text-obs-teal" />
-                <h4 className="font-display font-bold text-sm text-obs-ink">
-                  Citywide PM2.5 History Across Saved Briefs
-                </h4>
-              </div>
-              <span className="text-[11px] font-mono text-obs-muted">
-                5 Historical Snapshots
-              </span>
-            </div>
-
-            <div className="h-14 flex items-center">
-              <Sparkline data={historyPoints} width={480} height={44} color="#2DD4BF" peakColor="#E5483D" />
-            </div>
-            <p className="text-[11px] text-obs-muted">
-              Click any historical point along the trajectory to reload that briefing and its audit ledger.
-            </p>
-          </GlassPanel>
         </div>
       )}
     </div>
