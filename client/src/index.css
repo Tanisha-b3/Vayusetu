@@ -167,6 +167,22 @@ html:not(.dark) .glass-panel {
   outline-offset: 2px;
 }
 
+/* Sleek observatory scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(45, 212, 191, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(45, 212, 191, 0.4);
+}
+
 /* Print Styles for A4 Posters */
 @media print {
   body {
