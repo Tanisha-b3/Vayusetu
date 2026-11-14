@@ -37,6 +37,9 @@ const clientDist = [
 if (clientDist) {
   app.use(express.static(clientDist));
   app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
+} else {
+  // No built frontend (e.g. the API-only Vercel deployment): answer the root with a status payload.
+  app.get('/', (_req, res) => res.json({ ok: true, service: 'VayuSetu API', health: '/api/health' }));
 }
 
 app.use((err, _req, res, _next) => {
