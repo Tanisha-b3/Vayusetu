@@ -4,7 +4,13 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { parseBuffer, parseText } from '../services/parser.js';
-import { createReport } from '../services/normalizer.js';
+import {
+  createReportAsync,
+  normalizeTableAsync,
+  buildSummary,
+  computeDataHealth,
+} from '../services/normalizer.js';
+import { runAnalysisPipeline } from '../services/agents/pipeline.js';
 import * as gen from '../services/generate.js';
 import { renderDocument } from '../services/render.js';
 import { saveReport, getReport, listReports, findPrevious } from '../store.js';
@@ -16,7 +22,11 @@ export const api = Router();
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 const need = async (id) => {
   const r = await getReport(id);
-  if (!r) { const e = new Error('Report not found'); e.status = 404; throw e; }
+  if (!r) {
+    const e = new Error('Report not found');
+    e.status = 404;
+    throw e;
+  }
   return r;
 };
 const pick = (v, allowed, dflt) => (v && allowed[v] ? v : dflt);
@@ -36,10 +46,13 @@ api.get('/health', (_req, res) => {
 
 api.get('/samples', (_req, res) => {
   try {
-    const dir = fs.existsSync(path.join(process.cwd(), 'server', 'sample-data'))
-      ? path.join(process.cwd(), 'server', 'sample-data')
-      : path.join(process.cwd(), 'sample-data');
-    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.csv'));
+    const dir = [
+      path.join(process.cwd(), 'server', 'sample-data'),
+      path.join(process.cwd(), 'sample-data'),
+      path.join(process.cwd(), '..', 'server', 'sample-data'),
+    ].find((p) => fs.existsSync(p));
+    if (!dir) return res.json([]);
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.csv') || f.endsWith('.txt'));
     const samples = files.map((file) => ({
       name: file,
       city: 'Bhopal',
@@ -51,66 +64,171 @@ api.get('/samples', (_req, res) => {
   }
 });
 
-// ---- Upload / paste -> parse -> clean -> store (no AI involved) ----
-api.post('/reports', upload.single('file'), wrap(async (req, res) => {
-  let table, sourceFile;
-  if (req.file) { ({ table } = parseBuffer(req.file.buffer, req.file.originalname)); sourceFile = req.file.originalname; }
-  else if (req.body.text) { ({ table } = parseText(req.body.text)); sourceFile = req.body.name || 'pasted-table'; }
-  else { const e = new Error('Send a file (field "file") or pasted text (field "text").'); e.status = 400; throw e; }
-  const report = createReport({ id: crypto.randomUUID().slice(0, 8), sourceFile, table, city: req.body.city, reportDate: req.body.reportDate, name: req.body.name });
-  await saveReport(report);
-  res.status(201).json(report);
-}));
+// ---- Upload / paste -> parse -> clean -> store ----
+api.post(
+  '/reports',
+  upload.single('file'),
+  wrap(async (req, res) => {
+    let table, sourceFile;
+    if (req.file) {
+      ({ table } = parseBuffer(req.file.buffer, req.file.originalname));
+      sourceFile = req.file.originalname;
+    } else if (req.body.text) {
+      ({ table } = parseText(req.body.text));
+      sourceFile = req.body.name || 'pasted-table';
+    } else {
+      const e = new Error('Send a file (field "file") or pasted text (field "text").');
+      e.status = 400;
+      throw e;
+    }
+    const report = await createReportAsync({
+      id: crypto.randomUUID().slice(0, 8),
+      sourceFile,
+      table,
+      city: req.body.city,
+      reportDate: req.body.reportDate,
+      name: req.body.name,
+    });
+    report.dataHealth = computeDataHealth(report);
+    await saveReport(report);
+    res.status(201).json(report);
+  })
+);
 
 api.get('/reports', wrap(async (_req, res) => res.json(await listReports())));
 api.get('/reports/:id', wrap(async (req, res) => res.json(await need(req.params.id))));
 
+// ---- Accept / override column interpretation ----
+api.patch(
+  '/reports/:id/remap',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    const overrides = req.body.overrides || {};
+    if (!r.rawTable || r.rawTable.length === 0) {
+      const e = new Error('Raw table data not available for remapping');
+      e.status = 400;
+      throw e;
+    }
+    const n = await normalizeTableAsync({
+      table: r.rawTable,
+      reportId: r.id,
+      sourceFile: r.sourceFile,
+      manualOverrides: overrides,
+    });
+    r.columnMapping = n.columns;
+    r.unmappedColumns = n.unmapped;
+    r.mappingLog = n.mappingLog;
+    r.readings = n.readings;
+    r.summary = buildSummary(n.readings, n.columns);
+    r.dataHealth = computeDataHealth(r);
+    // Reset generated downstream analysis so new columns apply
+    r.analysis = null;
+    await saveReport(r);
+    res.json(r);
+  })
+);
+
+// ---- Multi-Agent Pipeline Execution ----
+api.post(
+  '/reports/:id/pipeline',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    const result = await runAnalysisPipeline(r, {
+      roles: req.body.roles,
+      languages: req.body.languages,
+    });
+    r.analysis = result.analysis;
+    r.recommendations = result.recommendations;
+    r.pipelineTrace = result.trace;
+    r.verification = result.verification;
+    r.dataHealth = result.dataHealth;
+    r.auditor = result.auditor;
+    await saveReport(r);
+    res.json(result);
+  })
+);
+
+api.get(
+  '/reports/:id/trace',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    res.json({ trace: r.pipelineTrace || [], verification: r.verification || null });
+  })
+);
+
 // ---- Traceability: click a finding -> see the underlying rows ----
-api.get('/reports/:id/readings/:rid', wrap(async (req, res) => {
-  const r = await need(req.params.id);
-  const reading = r.readings.find((x) => x.id === req.params.rid);
-  if (!reading) { const e = new Error('Reading not found'); e.status = 404; throw e; }
-  res.json(reading);
-}));
-api.post('/reports/:id/readings', wrap(async (req, res) => { // batch lookup: { ids: ["R3","R7"] }
-  const r = await need(req.params.id);
-  res.json((req.body.ids || []).map((id) => r.readings.find((x) => x.id === id)).filter(Boolean));
-}));
+api.get(
+  '/reports/:id/readings/:rid',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    const reading = r.readings.find((x) => x.id === req.params.rid);
+    if (!reading) {
+      const e = new Error('Reading not found');
+      e.status = 404;
+      throw e;
+    }
+    res.json(reading);
+  })
+);
 
-// ---- AI steps ----
-api.post('/reports/:id/analyze', wrap(async (req, res) => {
-  const r = await need(req.params.id);
-  r.analysis = await gen.analyzeReport(r);
-  await saveReport(r);
-  res.json(r.analysis);
-}));
+api.post(
+  '/reports/:id/readings',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    res.json((req.body.ids || []).map((id) => r.readings.find((x) => x.id === id)).filter(Boolean));
+  })
+);
 
-api.post('/reports/:id/recommendations', wrap(async (req, res) => {
-  const r = await need(req.params.id);
-  const role = pick(req.body.role, ROLES, 'ward_officer');
-  r.recommendations = { ...r.recommendations, [role]: await gen.recommend(r, role) };
-  await saveReport(r);
-  res.json(r.recommendations[role]);
-}));
+// ---- Traditional AI analysis & recommendations ----
+api.post(
+  '/reports/:id/analyze',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    r.analysis = await gen.analyzeReport(r);
+    await saveReport(r);
+    res.json(r.analysis);
+  })
+);
 
-api.patch('/reports/:id/actions/:role/:actionId', wrap(async (req, res) => { // action tracker
-  const r = await need(req.params.id);
-  const a = r.recommendations?.[req.params.role]?.actions?.find((x) => x.id === req.params.actionId);
-  if (!a) { const e = new Error('Action not found'); e.status = 404; throw e; }
-  if (req.body.status) a.status = req.body.status;      // todo | in_progress | done
-  if (req.body.assignee !== undefined) a.assignee = req.body.assignee;
-  await saveReport(r);
-  res.json(a);
-}));
+api.post(
+  '/reports/:id/recommendations',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    const role = pick(req.body.role, ROLES, 'ward_officer');
+    r.recommendations = { ...r.recommendations, [role]: await gen.recommend(r, role) };
+    await saveReport(r);
+    res.json(r.recommendations[role]);
+  })
+);
 
-api.post('/reports/:id/compare', wrap(async (req, res) => {
-  const r = await need(req.params.id);
-  const prev = req.body.previousId ? await need(req.body.previousId) : await findPrevious(r);
-  if (!prev) return res.json({ previous: null, message: 'No earlier report found. Upload an earlier report first.' });
-  r.comparison = await gen.compare(prev, r);
-  await saveReport(r);
-  res.json(r.comparison);
-}));
+api.patch(
+  '/reports/:id/actions/:role/:actionId',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    const a = r.recommendations?.[req.params.role]?.actions?.find((x) => x.id === req.params.actionId);
+    if (!a) {
+      const e = new Error('Action not found');
+      e.status = 404;
+      throw e;
+    }
+    if (req.body.status) a.status = req.body.status;
+    if (req.body.assignee !== undefined) a.assignee = req.body.assignee;
+    await saveReport(r);
+    res.json(a);
+  })
+);
+
+api.post(
+  '/reports/:id/compare',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    const prev = req.body.previousId ? await need(req.body.previousId) : await findPrevious(r);
+    if (!prev) return res.json({ previous: null, message: 'No earlier report found. Upload an earlier report first.' });
+    r.comparison = await gen.compare(prev, r);
+    await saveReport(r);
+    res.json(r.comparison);
+  })
+);
 
 async function makeDoc(kind, req, res) {
   const r = await need(req.params.id);
@@ -118,29 +236,136 @@ async function makeDoc(kind, req, res) {
   const level = pick(req.body.level, LEVELS, kind === 'advisory' ? 'simple' : 'standard');
   const role = pick(req.body.role, ROLES, 'ward_officer');
   const comparison = r.comparison || null;
-  const content = kind === 'briefing'
-    ? await gen.briefing(r, { language, level, comparison, recommendations: r.recommendations?.[role] || (await gen.recommend(r, role)) })
-    : await gen.advisory(r, { language, level, comparison });
-  const doc = { id: crypto.randomUUID().slice(0, 6), kind, language, level, role: kind === 'briefing' ? role : undefined, createdAt: new Date().toISOString(), content };
+  const content =
+    kind === 'briefing'
+      ? await gen.briefing(r, {
+          language,
+          level,
+          comparison,
+          recommendations: r.recommendations?.[role] || (await gen.recommend(r, role)),
+        })
+      : await gen.advisory(r, { language, level, comparison });
+  const doc = {
+    id: crypto.randomUUID().slice(0, 6),
+    kind,
+    language,
+    level,
+    role: kind === 'briefing' ? role : undefined,
+    createdAt: new Date().toISOString(),
+    content,
+  };
   r.documents.push(doc);
   await saveReport(r);
   res.json({ ...doc, printUrl: `/api/reports/${r.id}/documents/${doc.id}/print` });
 }
+
 api.post('/reports/:id/briefing', wrap((req, res) => makeDoc('briefing', req, res)));
 api.post('/reports/:id/advisory', wrap((req, res) => makeDoc('advisory', req, res)));
 
-api.get('/reports/:id/documents/:docId/print', wrap(async (req, res) => {
-  const r = await need(req.params.id);
-  const doc = r.documents.find((d) => d.id === req.params.docId);
-  if (!doc) { const e = new Error('Document not found'); e.status = 404; throw e; }
-  res.type('html').send(renderDocument(r, doc));
-}));
+api.get(
+  '/reports/:id/documents/:docId/print',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    const doc = r.documents.find((d) => d.id === req.params.docId);
+    if (!doc) {
+      const e = new Error('Document not found');
+      e.status = 404;
+      throw e;
+    }
+    res.type('html').send(renderDocument(r, doc));
+  })
+);
 
 // ---- Grounded Q&A over the report (RAG) ----
-api.post('/reports/:id/ask', wrap(async (req, res) => {
-  const r = await need(req.params.id);
-  if (!req.body.question) { const e = new Error('question is required'); e.status = 400; throw e; }
-  res.json(await gen.ask(r, req.body.question, req.body.role));
-}));
+api.post(
+  '/reports/:id/ask',
+  wrap(async (req, res) => {
+    const r = await need(req.params.id);
+    if (!req.body.question) {
+      const e = new Error('question is required');
+      e.status = 400;
+      throw e;
+    }
+    res.json(await gen.ask(r, req.body.question, req.body.role));
+  })
+);
+
+// ---- Authentication Endpoints (Prompt 13) ----
+const USERS_STORE = new Map([
+  [
+    'demo@vayusetu.gov.in',
+    {
+      id: 'demo_ward_1',
+      name: 'Ashok Sharma',
+      email: 'demo@vayusetu.gov.in',
+      password: 'password123',
+      role: 'ward_officer',
+      organization: 'Bhopal Municipal Corporation',
+      city: 'Bhopal',
+      ward: 'Zone 8, Ward 42',
+      language: 'hi',
+    },
+  ],
+]);
+
+api.post('/auth/signup', (req, res) => {
+  const { name, email, password, role, organization, city, ward, language } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password required' });
+  }
+  const user = {
+    id: 'usr_' + Date.now(),
+    name: name || email.split('@')[0],
+    email,
+    password,
+    role: role || 'ward_officer',
+    organization: organization || 'Civic Administration',
+    city: city || 'Bhopal',
+    ward: ward || 'Zone 1',
+    language: language || 'en',
+  };
+  USERS_STORE.set(email.toLowerCase(), user);
+  const token = 'jwt_' + crypto.randomBytes(16).toString('hex');
+  const safeUser = { ...user };
+  delete safeUser.password;
+  res.json({ success: true, user: safeUser, token });
+});
+
+api.post('/auth/login', (req, res) => {
+  const { email, password } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+  let user = USERS_STORE.get(email.toLowerCase());
+  if (!user) {
+    // Auto-create for demo resilience if password given
+    user = {
+      id: 'usr_' + Date.now(),
+      name: email.split('@')[0].replace(/[._]/g, ' '),
+      email,
+      role: 'ward_officer',
+      organization: 'Civic Administration',
+      city: 'Bhopal',
+      ward: 'Zone 8, Ward 42',
+      language: 'hi',
+    };
+    USERS_STORE.set(email.toLowerCase(), user);
+  }
+  const token = 'jwt_' + crypto.randomBytes(16).toString('hex');
+  const safeUser = { ...user };
+  delete safeUser.password;
+  res.json({ success: true, user: safeUser, token });
+});
+
+api.post('/auth/logout', (_req, res) => {
+  res.json({ success: true });
+});
+
+api.get('/auth/me', (req, res) => {
+  const user = USERS_STORE.get('demo@vayusetu.gov.in');
+  const safeUser = { ...user };
+  delete safeUser.password;
+  res.json({ user: safeUser });
+});
 
 api.all('*', (_req, res) => res.status(404).json({ error: 'API endpoint not found' }));

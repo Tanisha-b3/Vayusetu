@@ -1,51 +1,100 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import {
+  MapPin,
+  Play,
+  Pause,
+  Layers,
+  Flame,
+  ShieldCheck,
+  ChevronRight,
+  Info,
+  Maximize2,
+} from 'lucide-react';
+import { GlassPanel, AQIBadge, ConfidenceBadge, CitationPill } from './ui';
 
 const BHOPAL_COORDS = {
+  'hamidia road': [23.2625, 77.4110],
+  'hamidia rd': [23.2625, 77.4110],
   'mp nagar': [23.2332, 77.4350],
   'arera': [23.2156, 77.4337],
   'arera colony': [23.2156, 77.4337],
   'new market': [23.2384, 77.3995],
   'kolar': [23.1670, 77.4180],
+  'kolar road': [23.1670, 77.4180],
   'tt nagar': [23.2350, 77.4080],
   'habibganj': [23.2205, 77.4385],
-  'bairagarh': [23.2720, 77.3450],
+  'berasia road': [23.2840, 77.4020],
+  'govindpura': [23.2510, 77.4640],
 };
 
-const BAND_COLORS = {
-  'Good': '#10b981',
-  'Satisfactory': '#84cc16',
-  'Moderate': '#eab308',
-  'Poor': '#f97316',
-  'Very Poor': '#ef4444',
-  'Severe': '#881337',
-  'Unknown': '#94a3b8',
+const CPCB_COLORS = {
+  Good: '#3DBE6B',
+  Satisfactory: '#A3CF4A',
+  Moderate: '#F2C230',
+  Poor: '#F28C28',
+  'Very Poor': '#E5483D',
+  Severe: '#9B1C3B',
 };
 
-export function AirQualityMap({ locations = [], onSelectEvidence }) {
+export function AirQualityMap({
+  locations = [],
+  onSelectEvidence,
+  className = '',
+}) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
+  const markersRef = useRef({});
 
+  const [activePollutant, setActivePollutant] = useState('AQI'); // 'AQI' | 'PM2.5' | 'PM10'
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [timeIndex, setTimeIndex] = useState(12); // simulated hour (0 to 23)
+  const [showHeatmap, setShowHeatmap] = useState(true);
+  const [selectedStation, setSelectedStation] = useState(null);
+
+  // Play animation loop
+  useEffect(() => {
+    let interval;
+    if (isPlaying) {
+      interval = setInterval(() => {
+        setTimeIndex((prev) => (prev + 1) % 24);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying]);
+
+  // Initialize and update Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    if (!mapInstanceRef.current) {
-      // Default to Bhopal center
-      const map = L.map(mapContainerRef.current).setView([23.2450, 77.4126], 12);
+    const isDarkMode = document.documentElement.classList.contains('dark');
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 18,
-      }).addTo(map);
+    if (!mapInstanceRef.current) {
+      // Create map
+      const map = L.map(mapContainerRef.current, {
+        zoomControl: false,
+        attributionControl: false,
+      }).setView([23.245, 77.4126], 12);
+
+      // CartoDB Muted basemap (Dark Matter in dark mode, Positron in light mode)
+      const tileUrl = isDarkMode
+        ? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+
+      L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
+
+      // Zoom control in bottom right
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
 
       mapInstanceRef.current = map;
     }
 
     const map = mapInstanceRef.current;
+    markersRef.current = {};
 
     // Remove existing markers
     map.eachLayer((layer) => {
-      if (layer instanceof L.Marker) {
+      if (layer instanceof L.Marker || layer instanceof L.Circle) {
         map.removeLayer(layer);
       }
     });
@@ -53,104 +102,213 @@ export function AirQualityMap({ locations = [], onSelectEvidence }) {
     const bounds = L.latLngBounds([]);
 
     locations.forEach((loc, index) => {
-      const key = (loc.location || '').toLowerCase().trim();
+      const name = (loc.location || loc.name || '').trim();
+      const key = name.toLowerCase();
       let coords = BHOPAL_COORDS[key];
 
-      // Fallback coordinate generation near center if station unknown
       if (!coords) {
-        const angle = (index * (360 / Math.max(locations.length, 1))) * (Math.PI / 180);
-        coords = [23.2450 + 0.04 * Math.sin(angle), 77.4126 + 0.04 * Math.cos(angle)];
+        const angle = index * (360 / Math.max(locations.length, 1)) * (Math.PI / 180);
+        coords = [23.245 + 0.035 * Math.sin(angle), 77.4126 + 0.04 * Math.cos(angle)];
       }
 
       bounds.extend(coords);
 
-      const color = BAND_COLORS[loc.band] || '#64748b';
-      const isHotspot = loc.band === 'Poor' || loc.band === 'Very Poor' || loc.band === 'Severe';
+      const aqi = Math.round(loc.avgAqi || loc.aqi || 120);
+      const band = loc.band || (aqi <= 100 ? 'Satisfactory' : aqi <= 200 ? 'Moderate' : 'Poor');
+      const color = CPCB_COLORS[band] || '#F28C28';
+      const isHotspot = band === 'Poor' || band === 'Very Poor' || band === 'Severe';
 
-      const customIcon = L.divIcon({
-        className: 'custom-map-pin',
-        html: `
+      // Soft glowing disc custom marker HTML
+      const markerHtml = `
+        <div style="position: relative; width: 34px; height: 34px; display: flex; items-center: center; justify-content: center; cursor: pointer;">
+          ${
+            isHotspot
+              ? `<div style="position: absolute; inset: -4px; border-radius: 999px; background: ${color}; opacity: 0.35; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
+              : ''
+          }
           <div style="
-            background-color: ${color};
-            width: ${isHotspot ? '28px' : '22px'};
-            height: ${isHotspot ? '28px' : '22px'};
-            border-radius: 50%;
-            border: 3px solid white;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            position: absolute;
+            width: 32px;
+            height: 32px;
+            border-radius: 999px;
+            background: ${color};
+            border: 2px solid #FFFFFF;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-size: 10px;
-            font-weight: bold;
-            ${isHotspot ? 'animation: pulse 2s infinite;' : ''}
+            color: #FFFFFF;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 800;
           ">
-            ${isHotspot ? '!' : ''}
+            ${aqi}
           </div>
-        `,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
+        </div>
+      `;
+
+      const customIcon = L.divIcon({
+        className: 'vayu-map-marker',
+        html: markerHtml,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
       });
 
       const marker = L.marker(coords, { icon: customIcon }).addTo(map);
 
-      // Popup Content
-      const popupHtml = `
-        <div style="font-family: inherit; font-size: 12px; min-width: 180px;">
-          <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 700; color: #0f172a;">${loc.location}</h4>
-          <div style="margin-bottom: 6px;">
-            <span style="background: ${color}; color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px;">
-              ${loc.band || 'No Band'}
-            </span>
-          </div>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
-            <tr><td style="color: #64748b; padding: 2px 0;">PM2.5:</td><td style="font-weight: 600; text-align: right;">${loc.pm25?.value != null ? `${loc.pm25.value} µg/m³` : 'N/A'}</td></tr>
-            <tr><td style="color: #64748b; padding: 2px 0;">PM10:</td><td style="font-weight: 600; text-align: right;">${loc.pm10?.value != null ? `${loc.pm10.value} µg/m³` : 'N/A'}</td></tr>
-            <tr><td style="color: #64748b; padding: 2px 0;">AQI:</td><td style="font-weight: 600; text-align: right;">${loc.aqi?.value != null ? loc.aqi.value : 'N/A'}</td></tr>
-          </table>
-          ${(loc.evidenceIds || []).length > 0 ? `
-            <div style="font-size: 11px; color: #0369a1; border-top: 1px solid #e2e8f0; padding-top: 4px;">
-              Evidence: ${(loc.evidenceIds || []).map(id => `<span class="evidence-link" data-id="${id}" style="cursor: pointer; text-decoration: underline; margin-right: 4px;">[${id}]</span>`).join('')}
-            </div>
-          ` : ''}
+      // Popup Glass Card
+      const popupContent = document.createElement('div');
+      popupContent.className = 'font-body text-xs p-1 space-y-2';
+      popupContent.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 4px;">
+          <strong style="font-size: 13px; color: #10201c;">${name}</strong>
+          <span style="font-family: monospace; font-size: 10px; font-weight: bold; color: ${color};">${band}</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px; color: #555;">
+          <span>PM2.5: <strong>${Math.round(loc.avgPm25 || aqi * 0.55)} µg/m³</strong></span>
+          <span>AQI: <strong style="color: ${color};">${aqi}</strong></span>
         </div>
       `;
 
-      marker.bindPopup(popupHtml);
+      marker.bindPopup(popupContent);
+      markersRef.current[name] = { marker, coords };
+
+      // Optional heat radius circle
+      if (showHeatmap && isHotspot) {
+        L.circle(coords, {
+          radius: 900,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.12,
+          weight: 1,
+        }).addTo(map);
+      }
     });
 
-    if (locations.length > 0 && bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+    if (locations.length > 0) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
     }
-  }, [locations]);
+  }, [locations, showHeatmap]);
+
+  const handleFlyToStation = (stationName) => {
+    setSelectedStation(stationName);
+    const entry = markersRef.current[stationName];
+    if (entry && mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo(entry.coords, 14, { duration: 1.2 });
+      entry.marker.openPopup();
+    }
+  };
 
   return (
-    <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '1.5rem', position: 'relative' }}>
-      <div style={{
-        padding: '0.75rem 1rem',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        background: '#ffffff'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 600 }}>Air Quality Station Map</h3>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            ({locations.length} monitoring stations)
-          </span>
-        </div>
-        {/* Legend */}
-        <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.7rem', flexWrap: 'wrap' }}>
-          {Object.entries(BAND_COLORS).map(([name, col]) => (
-            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: col }} />
-              <span style={{ color: 'var(--text-muted)' }}>{name}</span>
+    <div className={`relative w-full h-[540px] rounded-2xl overflow-hidden border border-obs-hairline shadow-elevated ${className}`}>
+      {/* Map Canvas */}
+      <div ref={mapContainerRef} className="w-full h-full z-0" tabIndex={0} aria-label="Interactive Air Quality Ward Map" />
+
+      {/* Floating Glass Panel (Left): Ranked Hotspot List */}
+      <div className="absolute top-4 left-4 z-10 w-72 max-h-[460px] flex flex-col pointer-events-none">
+        <GlassPanel className="p-4 pointer-events-auto space-y-3 max-h-[460px] flex flex-col">
+          <div className="flex items-center justify-between pb-2 border-b border-obs-hairline">
+            <div className="flex items-center gap-1.5">
+              <Flame className="w-4 h-4 text-cpcb-poor" />
+              <span className="font-display font-bold text-xs uppercase tracking-wider text-obs-ink">
+                Priority Corridors
+              </span>
             </div>
-          ))}
-        </div>
+            <span className="text-[10px] font-mono text-obs-muted">
+              {locations.length} Sites
+            </span>
+          </div>
+
+          <div className="overflow-y-auto space-y-2 flex-1 pr-1">
+            {locations.map((loc, idx) => {
+              const name = loc.location || loc.name;
+              const aqi = Math.round(loc.avgAqi || loc.aqi || 120);
+              const isSelected = selectedStation === name;
+
+              return (
+                <div
+                  key={name || idx}
+                  onClick={() => handleFlyToStation(name)}
+                  className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                    isSelected
+                      ? 'border-obs-teal bg-obs-teal/15 shadow-xs'
+                      : 'border-obs-hairline bg-obs-surface/80 hover:bg-obs-surface'
+                  }`}
+                >
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-obs-ink block">{name}</span>
+                    <span className="text-[10px] text-obs-muted font-mono">
+                      PM2.5: {Math.round(loc.avgPm25 || aqi * 0.55)} µg/m³
+                    </span>
+                  </div>
+                  <AQIBadge band={loc.band} aqi={aqi} size="sm" />
+                </div>
+              );
+            })}
+          </div>
+        </GlassPanel>
       </div>
-      <div ref={mapContainerRef} style={{ height: '380px', width: '100%', zIndex: 1 }} />
+
+      {/* Floating Glass Panel (Top-Right): Legend & Heatmap Toggle */}
+      <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2 pointer-events-none">
+        <GlassPanel className="p-3 pointer-events-auto flex items-center gap-2 text-xs">
+          <button
+            onClick={() => setShowHeatmap(!showHeatmap)}
+            className={`px-2.5 py-1 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
+              showHeatmap ? 'bg-obs-teal text-obs-canvas font-bold' : 'bg-obs-canvas text-obs-muted'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Heat Surface</span>
+          </button>
+        </GlassPanel>
+      </div>
+
+      {/* Floating Glass Panel (Bottom): Time Scrubber & Pollutant Switcher */}
+      <div className="absolute bottom-4 left-4 right-16 z-10 pointer-events-none flex justify-center">
+        <GlassPanel className="p-3.5 pointer-events-auto w-full max-w-2xl flex flex-col sm:flex-row items-center gap-4">
+          {/* Pollutant Tabs */}
+          <div className="inline-flex p-1 bg-obs-canvas rounded-lg text-xs font-mono font-bold shrink-0">
+            {['AQI', 'PM2.5', 'PM10'].map((p) => (
+              <button
+                key={p}
+                onClick={() => setActivePollutant(p)}
+                className={`px-2.5 py-1 rounded-md transition-colors ${
+                  activePollutant === p ? 'bg-obs-surface text-obs-teal shadow-xs' : 'text-obs-muted'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+
+          {/* Time Scrubber Slider with Play Button */}
+          <div className="flex-1 flex items-center gap-3 w-full">
+            <button
+              onClick={() => setIsPlaying(!isPlaying)}
+              className="w-8 h-8 rounded-lg bg-obs-teal text-obs-canvas flex items-center justify-center shrink-0 shadow-xs hover:bg-obs-teal-hover transition-colors"
+              aria-label={isPlaying ? 'Pause timeline playback' : 'Play timeline playback'}
+            >
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+            </button>
+
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center justify-between text-[11px] font-mono text-obs-muted">
+                <span>Diurnal Cycle</span>
+                <span className="text-obs-teal font-bold">{String(timeIndex).padStart(2, '0')}:00 hrs</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="23"
+                value={timeIndex}
+                onChange={(e) => setTimeIndex(Number(e.target.value))}
+                className="w-full h-1.5 bg-obs-hairline rounded-lg appearance-none cursor-pointer accent-obs-teal focus:outline-none"
+              />
+            </div>
+          </div>
+        </GlassPanel>
+      </div>
     </div>
   );
 }

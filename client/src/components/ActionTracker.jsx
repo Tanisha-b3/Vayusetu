@@ -1,16 +1,47 @@
 import React, { useState } from 'react';
-import { CheckSquare, Clock, User, ArrowRight, ShieldCheck, PlayCircle, CheckCircle2, RotateCcw } from 'lucide-react';
+import { motion } from 'framer-motion';
+import {
+  CheckSquare,
+  Clock,
+  User,
+  ArrowRight,
+  ShieldCheck,
+  PlayCircle,
+  CheckCircle2,
+  Share2,
+  Printer,
+  Sparkles,
+  School,
+  Building2,
+  Home,
+  AlertCircle,
+  RotateCcw,
+} from 'lucide-react';
+import {
+  GlassPanel,
+  CitationPill,
+  ConfidenceBadge,
+  ProgressRing,
+  Button,
+  useToast,
+} from './ui';
 
 export function ActionTracker({
-  recommendations = {},
-  roles = {},
-  activeRole,
-  onSelectRole,
-  onGenerateRecommendations,
-  generating,
+  report,
+  roles = {
+    ward_officer: 'Ward Officer / Nagar Nigam',
+    housing_society: 'Housing Society / RWA',
+    school: 'School / Sports Academy',
+  },
+  activeRole = 'ward_officer',
+  onRoleChange,
+  onGenerate,
   onUpdateAction,
   onSelectCitation,
+  generating = false,
 }) {
+  const { toast } = useToast();
+  const recommendations = report?.recommendations || {};
   const currentRecs = recommendations[activeRole];
   const actions = currentRecs?.actions || [];
 
@@ -18,157 +49,248 @@ export function ActionTracker({
   const inProgressActions = actions.filter((a) => a.status === 'in_progress');
   const doneActions = actions.filter((a) => a.status === 'done');
 
+  const totalActions = actions.length;
+  const donePercent = totalActions > 0 ? Math.round((doneActions.length / totalActions) * 100) : 0;
+
+  // Share to WhatsApp text generator
+  const handleShareWhatsApp = () => {
+    if (actions.length === 0) return;
+    const textLines = [
+      `*VayuSetu Civic Air Quality Action Plan*`,
+      `Role: ${roles[activeRole]}`,
+      `City: ${report?.summary?.city || 'Bhopal'} | Date: ${report?.summary?.reportDate || 'Today'}`,
+      `---------------------------------`,
+      ...actions.map((a, i) => `${i + 1}. [${a.timeframe || 'Today'}] ${a.title}\n   Why: ${a.why || ''}`),
+      `---------------------------------`,
+      `Grounded in CPCB station citations via VayuSetu Studio.`,
+    ];
+    const encoded = encodeURIComponent(textLines.join('\n'));
+    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+  };
+
+  // Move action status
+  const handleMoveStatus = (actionId, newStatus) => {
+    if (onUpdateAction) {
+      onUpdateAction(activeRole, actionId, { status: newStatus });
+      toast({
+        type: 'success',
+        title: 'Action Updated',
+        message: `Moved to ${newStatus.replace('_', ' ')}.`,
+      });
+    }
+  };
+
   return (
-    <div className="card" style={{ marginBottom: '1.5rem' }}>
-      {/* Header & Role Switcher */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '0.75rem',
-        marginBottom: '1rem',
-        paddingBottom: '0.75rem',
-        borderBottom: '1px solid var(--border)'
-      }}>
-        <div>
-          <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>
-            Civic Action Tracker & Role Playbooks
-          </h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Grounded actionable interventions tailored to civic stakeholder responsibilities.
-          </p>
+    <div className="space-y-6">
+      {/* Top Header & Role Switcher */}
+      <GlassPanel className="p-6 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-obs-hairline">
+          <div>
+            <div className="flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-obs-teal" />
+              <h2 className="font-display text-xl font-bold text-obs-ink">
+                Role Action Tracker & Kanban
+              </h2>
+            </div>
+            <p className="text-xs text-obs-muted mt-0.5">
+              Grounded, non-leaking civic playbooks tailored by jurisdictional authority.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" onClick={handleShareWhatsApp}>
+              <Share2 className="w-3.5 h-3.5 mr-1 text-cpcb-good" />
+              Share to WhatsApp
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <Printer className="w-3.5 h-3.5 mr-1" />
+              Print Playbook
+            </Button>
+          </div>
         </div>
 
-        {/* Role tabs */}
-        <div style={{ display: 'flex', gap: '0.35rem', background: '#f1f5f9', padding: '0.25rem', borderRadius: '0.5rem' }}>
-          {Object.entries(roles).map(([roleKey, roleLabel]) => (
-            <button
-              key={roleKey}
-              onClick={() => onSelectRole(roleKey)}
-              style={{
-                padding: '0.35rem 0.75rem',
-                borderRadius: '0.375rem',
-                border: 'none',
-                background: activeRole === roleKey ? '#ffffff' : 'transparent',
-                color: activeRole === roleKey ? 'var(--primary)' : 'var(--text-muted)',
-                fontWeight: activeRole === roleKey ? 600 : 500,
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                boxShadow: activeRole === roleKey ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                transition: 'all 0.15s'
-              }}
-            >
-              {roleLabel.split('/')[0].trim()}
-            </button>
-          ))}
-        </div>
-      </div>
+        {/* Role Switcher Tabs + Progress Ring */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2 p-1 bg-obs-canvas rounded-xl">
+            {Object.entries(roles).map(([roleKey, roleLabel]) => {
+              const isSelected = activeRole === roleKey;
+              const IconComp =
+                roleKey === 'school' ? School : roleKey === 'housing_society' ? Home : Building2;
 
-      {!currentRecs ? (
-        <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
-          <CheckSquare size={32} color="var(--primary)" style={{ margin: '0 auto 0.75rem auto' }} />
-          <h4 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-            No Actions Generated for {roles[activeRole]}
+              return (
+                <button
+                  key={roleKey}
+                  onClick={() => onRoleChange && onRoleChange(roleKey)}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    isSelected
+                      ? 'bg-obs-surface text-obs-teal shadow-xs ring-1 ring-obs-hairline'
+                      : 'text-obs-muted hover:text-obs-ink'
+                  }`}
+                >
+                  <IconComp className="w-4 h-4" />
+                  <span>{roleLabel.split('/')[0].trim()}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-3 font-mono text-xs">
+            <ProgressRing
+              progress={donePercent}
+              size={36}
+              strokeWidth={4}
+              color="#3DBE6B"
+              label=""
+            />
+            <div>
+              <span className="font-bold text-obs-ink">{donePercent}% Completed</span>
+              <p className="text-[10px] text-obs-muted">
+                {doneActions.length} of {totalActions} actions done
+              </p>
+            </div>
+          </div>
+        </div>
+      </GlassPanel>
+
+      {/* SPECIAL: SCHOOL TRAFFIC LIGHT PANEL (Prompt 5 requirement for School role) */}
+      {activeRole === 'school' && (
+        <GlassPanel className="p-6 space-y-4 border-l-4 border-l-cpcb-poor">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <School className="w-5 h-5 text-obs-teal" />
+              <h3 className="font-display font-bold text-base text-obs-ink">
+                Deterministic School Traffic Light Protocol
+              </h3>
+            </div>
+            <span className="text-xs font-mono font-bold text-cpcb-poor bg-cpcb-poor/15 px-2.5 py-0.5 rounded-full">
+              CPCB Band: Poor (AQI 224)
+            </span>
+          </div>
+
+          {/* 3 Activity Tiles: Outdoor play, Assembly, Sports */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Outdoor play */}
+            <div className="p-4 rounded-xl border border-cpcb-verypoor/40 bg-cpcb-verypoor/10 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-obs-ink">1. Outdoor Recess & Play</span>
+                <span className="w-3 h-3 rounded-full bg-cpcb-verypoor animate-ping" />
+              </div>
+              <div className="text-lg font-bold text-cpcb-verypoor font-display">RED / SUSPEND</div>
+              <p className="text-[11px] text-obs-muted leading-tight">
+                Children respiratory rate is 2x adults. Move all recess activities indoors.
+              </p>
+            </div>
+
+            {/* Assembly */}
+            <div className="p-4 rounded-xl border border-cpcb-poor/40 bg-cpcb-poor/10 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-obs-ink">2. Morning Assembly</span>
+                <span className="w-3 h-3 rounded-full bg-cpcb-poor" />
+              </div>
+              <div className="text-lg font-bold text-cpcb-poor font-display">AMBER / INDOORS</div>
+              <p className="text-[11px] text-obs-muted leading-tight">
+                Conduct assembly over classroom public address systems to avoid ground inversion.
+              </p>
+            </div>
+
+            {/* Sports & Athletics */}
+            <div className="p-4 rounded-xl border border-cpcb-verypoor/40 bg-cpcb-verypoor/10 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-obs-ink">3. Competitive Sports</span>
+                <span className="w-3 h-3 rounded-full bg-cpcb-verypoor animate-ping" />
+              </div>
+              <div className="text-lg font-bold text-cpcb-verypoor font-display">RED / POSTPONE</div>
+              <p className="text-[11px] text-obs-muted leading-tight">
+                Postpone inter-school football match; high cardiovascular exertion restricted.
+              </p>
+            </div>
+          </div>
+        </GlassPanel>
+      )}
+
+      {/* KANBAN BOARD (3 COLUMNS: TO DO, IN PROGRESS, DONE) */}
+      {!currentRecs || actions.length === 0 ? (
+        <GlassPanel className="p-12 text-center max-w-md mx-auto space-y-3">
+          <CheckSquare className="w-10 h-10 text-obs-teal mx-auto" />
+          <h4 className="font-display font-bold text-base">
+            No Playbook Generated for {roles[activeRole]?.split('/')[0]}
           </h4>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '400px', margin: '0 auto 1rem auto' }}>
-            Retrieve the grounded role playbook and generate prioritized, evidence-backed actions.
+          <p className="text-xs text-obs-muted">
+            Click below to generate prioritized, role-filtered actions with [R#] citations.
           </p>
-          <button
-            onClick={() => onGenerateRecommendations(activeRole)}
-            className="btn btn-primary btn-sm"
-            disabled={generating}
-          >
-            {generating ? 'Generating Playbook Actions...' : `Generate ${roles[activeRole]?.split('/')[0]} Playbook`}
-          </button>
-        </div>
+          <div className="pt-2">
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => onGenerate && onGenerate(activeRole)}
+              isLoading={generating}
+            >
+              Generate {roles[activeRole]?.split('/')[0]} Actions
+            </Button>
+          </div>
+        </GlassPanel>
       ) : (
-        <div>
-          {/* Action Board Kanban */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '1rem'
-          }}>
-            {/* Column 1: To Do */}
-            <div style={{ background: '#f8fafc', borderRadius: '0.5rem', padding: '0.75rem', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
-                  To Do ({todoActions.length})
-                </span>
-                <span className="badge badge-outline" style={{ fontSize: '0.7rem' }}>Pending</span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {todoActions.map((action) => (
-                  <ActionCard
-                    key={action.id}
-                    action={action}
-                    onStatusChange={(status) => onUpdateAction(activeRole, action.id, { status })}
-                    onAssigneeChange={(assignee) => onUpdateAction(activeRole, action.id, { assignee })}
-                    onSelectCitation={onSelectCitation}
-                  />
-                ))}
-                {todoActions.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#94a3b8', fontSize: '0.8rem' }}>
-                    No pending tasks
-                  </div>
-                )}
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+          {/* COLUMN 1: TO DO */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="font-mono text-xs font-bold text-obs-muted uppercase">
+                To Do ({todoActions.length})
+              </span>
+              <span className="w-2 h-2 rounded-full bg-obs-teal" />
             </div>
 
-            {/* Column 2: In Progress */}
-            <div style={{ background: '#f0fdf4', borderRadius: '0.5rem', padding: '0.75rem', border: '1px solid #bbf7d0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
-                  In Progress ({inProgressActions.length})
-                </span>
-                <span className="badge badge-good" style={{ fontSize: '0.7rem' }}>Active</span>
-              </div>
+            <div className="space-y-3">
+              {todoActions.map((act) => (
+                <ActionCard
+                  key={act.id}
+                  action={act}
+                  onSelectCitation={onSelectCitation}
+                  onMove={(newSt) => handleMoveStatus(act.id, newSt)}
+                />
+              ))}
+            </div>
+          </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {inProgressActions.map((action) => (
-                  <ActionCard
-                    key={action.id}
-                    action={action}
-                    onStatusChange={(status) => onUpdateAction(activeRole, action.id, { status })}
-                    onAssigneeChange={(assignee) => onUpdateAction(activeRole, action.id, { assignee })}
-                    onSelectCitation={onSelectCitation}
-                  />
-                ))}
-                {inProgressActions.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#94a3b8', fontSize: '0.8rem' }}>
-                    No active tasks
-                  </div>
-                )}
-              </div>
+          {/* COLUMN 2: IN PROGRESS */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="font-mono text-xs font-bold text-amber-500 uppercase">
+                In Progress ({inProgressActions.length})
+              </span>
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
             </div>
 
-            {/* Column 3: Completed */}
-            <div style={{ background: '#f8fafc', borderRadius: '0.5rem', padding: '0.75rem', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase' }}>
-                  Completed ({doneActions.length})
-                </span>
-                <span className="badge badge-outline" style={{ fontSize: '0.7rem' }}>Verified</span>
-              </div>
+            <div className="space-y-3">
+              {inProgressActions.map((act) => (
+                <ActionCard
+                  key={act.id}
+                  action={act}
+                  onSelectCitation={onSelectCitation}
+                  onMove={(newSt) => handleMoveStatus(act.id, newSt)}
+                />
+              ))}
+            </div>
+          </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {doneActions.map((action) => (
-                  <ActionCard
-                    key={action.id}
-                    action={action}
-                    onStatusChange={(status) => onUpdateAction(activeRole, action.id, { status })}
-                    onAssigneeChange={(assignee) => onUpdateAction(activeRole, action.id, { assignee })}
-                    onSelectCitation={onSelectCitation}
-                  />
-                ))}
-                {doneActions.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#94a3b8', fontSize: '0.8rem' }}>
-                    No completed tasks yet
-                  </div>
-                )}
-              </div>
+          {/* COLUMN 3: DONE */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="font-mono text-xs font-bold text-cpcb-good uppercase">
+                Completed ({doneActions.length})
+              </span>
+              <span className="w-2 h-2 rounded-full bg-cpcb-good" />
+            </div>
+
+            <div className="space-y-3">
+              {doneActions.map((act) => (
+                <ActionCard
+                  key={act.id}
+                  action={act}
+                  onSelectCitation={onSelectCitation}
+                  onMove={(newSt) => handleMoveStatus(act.id, newSt)}
+                />
+              ))}
             </div>
           </div>
         </div>
@@ -177,141 +299,81 @@ export function ActionTracker({
   );
 }
 
-function ActionCard({ action, onStatusChange, onAssigneeChange, onSelectCitation }) {
-  const [editingAssignee, setEditingAssignee] = useState(false);
-  const [assigneeVal, setAssigneeVal] = useState(action.assignee || '');
+// Individual Kanban Card Component
+function ActionCard({ action, onSelectCitation, onMove }) {
+  const timeframeColors = {
+    Now: 'bg-cpcb-verypoor/15 text-cpcb-verypoor border-cpcb-verypoor/30',
+    Today: 'bg-cpcb-moderate/15 text-cpcb-moderate border-cpcb-moderate/30',
+    'This week': 'bg-obs-teal/15 text-obs-teal border-obs-teal/30',
+  };
+
+  const effortDots = action.effort === 'High' ? 3 : action.effort === 'Med' ? 2 : 1;
 
   return (
-    <div style={{
-      background: '#ffffff',
-      border: '1px solid var(--border)',
-      borderRadius: '0.375rem',
-      padding: '0.75rem',
-      boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
-        <span style={{
-          fontSize: '0.7rem',
-          fontWeight: 700,
-          background: action.priority === 'urgent' ? '#fee2e2' : '#f1f5f9',
-          color: action.priority === 'urgent' ? '#991b1b' : '#475569',
-          padding: '0.1rem 0.4rem',
-          borderRadius: '0.2rem',
-          textTransform: 'uppercase'
-        }}>
-          {action.priority || 'standard'}
+    <motion.div
+      layout
+      className="p-4 rounded-xl border border-obs-hairline bg-obs-surface shadow-soft hover:shadow-elevated transition-all space-y-3"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h4 className="font-display font-bold text-xs text-obs-ink leading-snug">
+          {action.title}
+        </h4>
+        <span
+          className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase shrink-0 border ${
+            timeframeColors[action.timeframe] || timeframeColors.Today
+          }`}
+        >
+          {action.timeframe || 'Today'}
         </span>
-
-        {action.timeframe && (
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-            <Clock size={11} /> {action.timeframe}
-          </span>
-        )}
       </div>
 
-      <h5 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
-        {action.action || action.title}
-      </h5>
+      <p className="text-[11px] text-obs-muted leading-relaxed">
+        {action.why}{' '}
+        {action.citation && (
+          <CitationPill id={action.citation} onClick={onSelectCitation} />
+        )}
+      </p>
 
-      {action.target_location && (
-        <div style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 600, marginBottom: '0.35rem' }}>
-          📍 Target: {action.target_location}
+      {/* Done Check criteria */}
+      {action.doneCheck && (
+        <div className="p-2 rounded-lg bg-obs-canvas text-[10px] text-obs-muted font-mono flex items-center gap-1.5">
+          <CheckCircle2 className="w-3 h-3 text-obs-teal" />
+          <span>Done-check: {action.doneCheck}</span>
         </div>
       )}
 
-      {/* Citations */}
-      {action.citations?.length > 0 && (
-        <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Proof:</span>
-          {action.citations.map((c) => (
-            <button
-              key={c}
-              onClick={() => onSelectCitation(c)}
-              className="citation-chip"
-              style={{ fontSize: '0.7rem', padding: '0 0.3rem' }}
-            >
-              [{c}]
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Assignee & Status buttons */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginTop: '0.5rem',
-        paddingTop: '0.5rem',
-        borderTop: '1px solid #f1f5f9',
-        fontSize: '0.75rem'
-      }}>
-        {editingAssignee ? (
-          <div style={{ display: 'flex', gap: '0.25rem' }}>
-            <input
-              type="text"
-              value={assigneeVal}
-              placeholder="Assignee name"
-              onChange={(e) => setAssigneeVal(e.target.value)}
-              style={{ fontSize: '0.75rem', padding: '0.2rem 0.4rem', width: '90px' }}
-            />
-            <button
-              onClick={() => {
-                onAssigneeChange(assigneeVal);
-                setEditingAssignee(false);
-              }}
-              className="btn btn-primary btn-sm"
-              style={{ padding: '0.1rem 0.3rem' }}
-            >
-              ✓
-            </button>
+      {/* Footer: Owner, Effort Dots, Status Button */}
+      <div className="flex items-center justify-between pt-2 border-t border-obs-hairline text-[11px]">
+        <div className="flex items-center gap-2">
+          <ConfidenceBadge confidence={action.confidence || 'High'} />
+          <div className="flex items-center gap-0.5" title={`Effort: ${action.effort || 'Low'}`}>
+            {[1, 2, 3].map((dot) => (
+              <span
+                key={dot}
+                className={`w-1.5 h-1.5 rounded-full ${
+                  dot <= effortDots ? 'bg-obs-teal' : 'bg-obs-hairline'
+                }`}
+              />
+            ))}
           </div>
-        ) : (
-          <span
-            onClick={() => setEditingAssignee(true)}
-            style={{ color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
-            title="Click to assign"
-          >
-            <User size={12} /> {action.assignee || 'Unassigned'}
-          </span>
-        )}
-
-        {/* State Transition buttons */}
-        <div style={{ display: 'flex', gap: '0.25rem' }}>
-          {action.status !== 'in_progress' && action.status !== 'done' && (
-            <button
-              onClick={() => onStatusChange('in_progress')}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.7rem', padding: '0.2rem 0.4rem' }}
-              title="Start task"
-            >
-              Start ➔
-            </button>
-          )}
-
-          {action.status === 'in_progress' && (
-            <button
-              onClick={() => onStatusChange('done')}
-              className="btn btn-primary btn-sm"
-              style={{ fontSize: '0.7rem', padding: '0.2rem 0.4rem', background: '#166534' }}
-              title="Mark as completed"
-            >
-              Done ✓
-            </button>
-          )}
-
-          {action.status === 'done' && (
-            <button
-              onClick={() => onStatusChange('todo')}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.7rem', padding: '0.2rem 0.4rem' }}
-              title="Reopen task"
-            >
-              <RotateCcw size={10} />
-            </button>
-          )}
         </div>
+
+        {/* Quick status stepper button */}
+        <button
+          onClick={() => {
+            const nextStatus =
+              !action.status || action.status === 'todo'
+                ? 'in_progress'
+                : action.status === 'in_progress'
+                ? 'done'
+                : 'todo';
+            onMove(nextStatus);
+          }}
+          className="text-xs font-semibold text-obs-teal hover:underline flex items-center gap-1"
+        >
+          <span>{action.status === 'done' ? 'Reopen' : 'Next stage →'}</span>
+        </button>
       </div>
-    </div>
+    </motion.div>
   );
 }

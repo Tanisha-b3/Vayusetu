@@ -122,3 +122,29 @@ export async function askQuestion(id, question, role) {
   if (!res.ok) throw new Error('Q&A query failed');
   return res.json();
 }
+
+export async function triggerPipeline(id, { roles, languages } = {}) {
+  const res = await fetch(`${API_BASE}/reports/${id}/pipeline`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roles, languages }),
+  });
+  if (!res.ok) throw new Error('Multi-agent pipeline failed');
+  return res.json();
+}
+
+export async function remapColumns(id, overrides) {
+  const res = await fetch(`${API_BASE}/reports/${id}/remap`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ overrides }),
+  });
+  if (!res.ok) throw new Error('Column remapping failed');
+  return res.json();
+}
+
+export async function fetchTrace(id) {
+  const res = await fetch(`${API_BASE}/reports/${id}/trace`);
+  if (!res.ok) throw new Error('Failed to fetch pipeline trace');
+  return res.json();
+}

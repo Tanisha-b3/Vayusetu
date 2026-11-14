@@ -1,0 +1,7 @@
+Location	PM2.5   PM10	AQI   Date	Time
+MP Nagar	182   270	195   2026-11-13	08:00
+New Market	205   310	220   2026-11-13	08:30
+Arera Colony	78   120	95   2026-11-13	09:00
+Hamidia Hospital	235   340	250   2026-11-13	09:30
+Kolar Road	138   205	160   2026-11-13	10:00
+Govindpura	155   230	175   2026-11-13	10:30

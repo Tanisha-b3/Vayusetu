@@ -1,11 +1,12 @@
 import React from 'react';
-import { Wind, UploadCloud, RefreshCw, Sparkles, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Wind, UploadCloud, RefreshCw, Sparkles, ShieldAlert, CheckCircle2, Cpu } from 'lucide-react';
 
 export function Header({
   reports,
   activeReportId,
   onSelectReport,
   onOpenUpload,
+  onOpenWorkbench,
   onRefresh,
   health,
   loading,
@@ -127,6 +128,15 @@ export function Header({
               </>
             )}
           </div>
+
+          <button
+            onClick={onOpenWorkbench}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold shadow-sm transition"
+            title="Inspect 7-Agent Execution Trace & Verification Guardrails"
+          >
+            <Cpu size={15} />
+            <span>AI Workbench</span>
+          </button>
 
           <button
             onClick={onOpenUpload}

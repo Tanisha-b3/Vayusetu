@@ -8,9 +8,12 @@
     "dev": "node --watch server/index.js",
     "demo": "node server/scripts/demo.js",
     "client": "npm run dev --prefix client",
-    "build": "npm --prefix client install && npm --prefix client run build"
+    "test": "npm --prefix server run test:ugly",
+    "build": "cd client && npm install && npm run build"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -18,6 +21,7 @@
     "mongodb": "^6.8.0",
     "multer": "^1.4.5-lts.1",
     "papaparse": "^5.4.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.6.7"
   }
 }

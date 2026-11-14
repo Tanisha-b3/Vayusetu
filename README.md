@@ -3,7 +3,24 @@
 Backend + GenAI + RAG for the *Civic Air Quality Briefing Studio* challenge.
 Rule: **code cleans and calculates, Gemini interprets and writes, RAG keeps Gemini grounded.**
 
-## Setup
+## Deployment on Vercel
+VayuSetu is pre-configured for seamless 1-click deployment on **Vercel** with fullstack routing (React frontend + Express Serverless API functions):
+1. Push your repository to GitHub / GitLab.
+2. In the [Vercel Dashboard](https://vercel.com/new), import your repository.
+3. In **Settings -> Environment Variables**, add:
+   - `GROQ_API_KEY`: your Groq API key (`gsk_...`)
+   - `GROQ_MODEL`: `openai/gpt-oss-120b`
+   - `MONGODB_URI`: your MongoDB Atlas connection string (e.g. `mongodb+srv://...`)
+4. Click **Deploy**. Vercel will automatically build the React client and route all `/api/*` endpoints to the serverless handler!
+
+Alternatively, deploy using the Vercel CLI:
+```bash
+npx vercel
+# Follow prompts, set Environment Variables in Vercel dashboard, then deploy to production:
+npx vercel --prod
+```
+
+## Setup (Local)
 ```bash
 npm install               # install backend dependencies
 npm run build             # build the React + Vite frontend

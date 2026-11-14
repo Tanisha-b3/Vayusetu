@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Header } from './components/Header';
+import { BrowserRouter, Routes, Route, useNavigate, useParams, Navigate } from 'react-router-dom';
+import { AppShell } from './components/layout/AppShell';
 import { DataQualityCard } from './components/DataQualityCard';
 import { AirQualityMap } from './components/AirQualityMap';
 import { FindingsList } from './components/FindingsList';
@@ -10,6 +11,18 @@ import { DocumentStudio } from './components/DocumentStudio';
 import { GroundedChat } from './components/GroundedChat';
 import { ReadingsTable } from './components/ReadingsTable';
 import { UploadModal } from './components/UploadModal';
+import { AIWorkbenchDrawer } from './components/AIWorkbenchDrawer';
+import { TableInterpretationPanel } from './components/TableInterpretationPanel';
+import { Card, Button, EmptyState, useToast } from './components/ui';
+
+import LandingPage from './pages/LandingPage';
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import NotFoundPage from './pages/NotFoundPage';
+import StyleguidePage from './pages/StyleguidePage';
+import { StudioOverview } from './components/StudioOverview';
+import { useAuthStore } from './store/authStore';
 
 import {
   fetchHealth,
@@ -24,31 +37,54 @@ import {
   triggerCompare,
   generateDoc,
   askQuestion,
+  triggerPipeline,
+  remapColumns,
 } from './api';
 
 import {
-  LayoutDashboard,
   Sparkles,
-  GitCompare,
-  CheckSquare,
-  FileText,
-  TableProperties,
-  MessageSquare,
-  Flame,
-  AlertCircle,
+  PlusCircle,
+  Cpu,
+  Layers,
+  Database,
+  ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
-export default function App() {
+function StudioApp() {
+  const { tab } = useParams();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const { user, isAuthenticated, demoLogin } = useAuthStore();
+
+  // Map URL param to tab id
+  const tabSlugMap = {
+    dashboard: 'overview',
+    overview: 'overview',
+    'new-brief': 'new-brief',
+    'data-health': 'data-health',
+    hotspots: 'hotspots',
+    actions: 'actions',
+    compare: 'compare',
+    documents: 'documents',
+    assistant: 'assistant',
+    workbench: 'workbench',
+    evals: 'workbench',
+    settings: 'overview',
+  };
+
+  const activeTab = tabSlugMap[tab] || 'overview';
+
   const [health, setHealth] = useState(null);
   const [reports, setReports] = useState([]);
   const [activeReportId, setActiveReportId] = useState(null);
   const [activeReport, setActiveReport] = useState(null);
   const [samples, setSamples] = useState([]);
 
-  const [activeTab, setActiveTab] = useState('overview'); // overview, analysis, comparison, actions, documents, ledger, chat
-  const [activeRole, setActiveRole] = useState('ward_officer');
+  const [activeRole, setActiveRole] = useState(user?.role || 'ward_officer');
   const [evidenceReading, setEvidenceReading] = useState(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isWorkbenchOpen, setIsWorkbenchOpen] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -56,8 +92,24 @@ export default function App() {
   const [generatingRecs, setGeneratingRecs] = useState(false);
   const [generatingDoc, setGeneratingDoc] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [runningPipeline, setRunningPipeline] = useState(false);
+  const [remapping, setRemapping] = useState(false);
 
-  // Initialize app
+  // Auto-init user if none
+  useEffect(() => {
+    if (!isAuthenticated) {
+      demoLogin('ward_officer');
+    }
+  }, [isAuthenticated, demoLogin]);
+
+  // Open upload modal if route is /app/new-brief
+  useEffect(() => {
+    if (tab === 'new-brief') {
+      setIsUploadOpen(true);
+    }
+  }, [tab]);
+
+  // Initialize app data
   useEffect(() => {
     async function init() {
       try {
@@ -74,7 +126,6 @@ export default function App() {
         if (rList.length > 0) {
           setActiveReportId(rList[0].id);
         } else if (sList.length > 0) {
-          // If no reports uploaded yet, auto-load first demo sample
           setIsUploadOpen(true);
         }
       } catch (err) {
@@ -109,10 +160,7 @@ export default function App() {
   // Handle citation click -> open Evidence Drawer
   const handleSelectCitation = async (citationId) => {
     if (!activeReport) return;
-
-    // Handle "curr.R3" or "prev.R3" prefix
     const cleanId = citationId.replace(/^(curr|prev)\./, '');
-
     const found = activeReport.readings?.find((r) => r.id === cleanId);
     if (found) {
       setEvidenceReading(found);
@@ -127,6 +175,56 @@ export default function App() {
     }
   };
 
+  // Run 7-Agent Autonomous Pipeline
+  const handleRunPipeline = async () => {
+    if (!activeReport) return;
+    setRunningPipeline(true);
+    try {
+      const res = await triggerPipeline(activeReport.id, {
+        roles: ['ward_officer', 'school', 'housing_society'],
+        languages: ['hi'],
+      });
+      const updated = await fetchReport(activeReport.id);
+      setActiveReport(updated);
+      toast({
+        type: 'success',
+        title: '7-Agent Pipeline Completed',
+        message: `Verified ${res.verification?.ratioText || 'all claims against data'}.`,
+      });
+    } catch (err) {
+      toast({
+        type: 'error',
+        title: 'Pipeline Error',
+        message: err.message,
+      });
+    } finally {
+      setRunningPipeline(false);
+    }
+  };
+
+  // Remap columns with manual user overrides
+  const handleRemap = async (overrides) => {
+    if (!activeReport) return;
+    setRemapping(true);
+    try {
+      const updated = await remapColumns(activeReport.id, overrides);
+      setActiveReport(updated);
+      toast({
+        type: 'success',
+        title: 'Column Overrides Applied',
+        message: 'Normalizer recomputed all readings and metrics.',
+      });
+    } catch (err) {
+      toast({
+        type: 'error',
+        title: 'Remapping Failed',
+        message: err.message,
+      });
+    } finally {
+      setRemapping(false);
+    }
+  };
+
   // Trigger analysis
   const handleAnalyze = async () => {
     if (!activeReport) return;
@@ -134,8 +232,17 @@ export default function App() {
     try {
       const analysis = await triggerAnalyze(activeReport.id);
       setActiveReport((prev) => ({ ...prev, analysis }));
+      toast({
+        type: 'success',
+        title: 'Analysis Generated',
+        message: 'Grounded findings synthesized with row-level citations.',
+      });
     } catch (err) {
-      alert(`Analysis failed: ${err.message}`);
+      toast({
+        type: 'error',
+        title: 'Analysis Failed',
+        message: err.message,
+      });
     } finally {
       setAnalyzing(false);
     }
@@ -148,11 +255,13 @@ export default function App() {
     try {
       const comparison = await triggerCompare(activeReport.id, prevId);
       if (comparison.message && !comparison.diff) {
-        alert(comparison.message);
+        toast({ type: 'warning', title: 'Comparison Notice', message: comparison.message });
+      } else {
+        toast({ type: 'success', title: 'Comparison Ready', message: 'Temporal metric deltas computed.' });
       }
       setActiveReport((prev) => ({ ...prev, comparison }));
     } catch (err) {
-      alert(`Comparison failed: ${err.message}`);
+      toast({ type: 'error', title: 'Comparison Failed', message: err.message });
     } finally {
       setComparing(false);
     }
@@ -170,8 +279,9 @@ export default function App() {
       setReports((prev) => [newReport, ...prev.filter((r) => r.id !== newReport.id)]);
       const comparison = await triggerCompare(activeReport.id, newReport.id);
       setActiveReport((prev) => ({ ...prev, comparison }));
+      toast({ type: 'success', title: 'Sample Compared', message: `Comparing against ${sample.name}` });
     } catch (err) {
-      alert(`Load sample failed: ${err.message}`);
+      toast({ type: 'error', title: 'Load Failed', message: err.message });
     } finally {
       setComparing(false);
     }
@@ -187,8 +297,13 @@ export default function App() {
         ...prev,
         recommendations: { ...(prev.recommendations || {}), [role]: recs },
       }));
+      toast({
+        type: 'success',
+        title: 'Role Playbook Ready',
+        message: `Generated action plan for ${health?.roles?.[role] || role}.`,
+      });
     } catch (err) {
-      alert(`Recommendation failed: ${err.message}`);
+      toast({ type: 'error', title: 'Recommendation Failed', message: err.message });
     } finally {
       setGeneratingRecs(false);
     }
@@ -211,31 +326,31 @@ export default function App() {
           },
         };
       });
+      toast({ type: 'success', message: 'Action status updated.' });
     } catch (err) {
-      alert(`Update failed: ${err.message}`);
+      toast({ type: 'error', title: 'Update Failed', message: err.message });
     }
   };
 
   // Generate document
   const handleGenerateDoc = async (kind, params) => {
-    if (!activeReport) return null;
+    if (!activeReport) return;
     setGeneratingDoc(true);
     try {
       const doc = await generateDoc(activeReport.id, kind, params);
       setActiveReport((prev) => ({
         ...prev,
-        documents: [...(prev.documents || []), doc],
+        documents: [doc, ...(prev.documents || []).filter((d) => d.id !== doc.id)],
       }));
-      return doc;
+      toast({ type: 'success', title: 'Document Created', message: `${kind === 'briefing' ? 'Internal Brief' : 'Citizen Advisory'} generated.` });
     } catch (err) {
-      alert(`Document generation failed: ${err.message}`);
-      return null;
+      toast({ type: 'error', title: 'Generation Failed', message: err.message });
     } finally {
       setGeneratingDoc(false);
     }
   };
 
-  // Grounded Ask
+  // Ask-the-data RAG assistant
   const handleAsk = async (question) => {
     if (!activeReport) throw new Error('No active report');
     setAsking(true);
@@ -251,225 +366,278 @@ export default function App() {
     setReports((prev) => [newReport, ...prev.filter((r) => r.id !== newReport.id)]);
     setActiveReportId(newReport.id);
     setActiveReport(newReport);
+    toast({
+      type: 'success',
+      title: 'Dataset Ingested',
+      message: `Parsed ${newReport.readings?.length || 0} readings from ${newReport.sourceFile}.`,
+    });
   };
 
-  const navTabs = [
-    { id: 'overview', label: 'Studio Overview', icon: LayoutDashboard },
-    { id: 'analysis', label: 'Grounded Findings', icon: Sparkles },
-    { id: 'comparison', label: 'Report Comparison', icon: GitCompare },
-    { id: 'actions', label: 'Action Tracker', icon: CheckSquare },
-    { id: 'documents', label: 'Document Studio', icon: FileText },
-    { id: 'ledger', label: 'Readings Ledger', icon: TableProperties },
-    { id: 'chat', label: 'Grounded Assistant', icon: MessageSquare },
-  ];
+  const handleTabChange = (newTab) => {
+    if (newTab === 'styleguide') {
+      navigate('/styleguide');
+      return;
+    }
+    const slug = newTab === 'overview' ? 'dashboard' : newTab;
+    navigate(`/app/${slug}`);
+  };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Header
-        reports={reports}
-        activeReportId={activeReportId}
-        onSelectReport={setActiveReportId}
-        onOpenUpload={() => setIsUploadOpen(true)}
-        onRefresh={() => {
-          if (activeReportId) {
-            setLoading(true);
-            fetchReport(activeReportId)
-              .then(setActiveReport)
-              .finally(() => setLoading(false));
-          }
-        }}
-        health={health}
-        loading={loading}
-      />
+    <AppShell
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      reports={reports}
+      activeReportId={activeReportId}
+      onSelectReport={setActiveReportId}
+      onOpenUpload={() => setIsUploadOpen(true)}
+      onOpenWorkbench={() => setIsWorkbenchOpen(true)}
+      onRefresh={() => {
+        if (activeReportId) {
+          setLoading(true);
+          fetchReport(activeReportId)
+            .then(setActiveReport)
+            .finally(() => setLoading(false));
+        }
+      }}
+      loading={loading}
+      health={health}
+    >
+      {!activeReport ? (
+        <EmptyState
+          title="Welcome to VayuSetu Briefing Studio"
+          description="Upload an air quality CSV/XLSX dataset or load one of the pre-built sample Bhopal datasets to explore deterministic cleaning, grounded citations, and multi-role advisories."
+          actionLabel="Load Sample Dataset"
+          onAction={() => setIsUploadOpen(true)}
+        />
+      ) : (
+        <div className="space-y-6">
+          {/* TAB 1: Studio Overview (Prompt 1: 12-Column Asymmetric Bento Grid) */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <TableInterpretationPanel
+                report={activeReport}
+                onRemap={handleRemap}
+                remapping={remapping}
+              />
 
-      {/* Main navigation tabs */}
-      <div style={{
-        background: '#ffffff',
-        borderBottom: '1px solid var(--border)',
-        padding: '0 1.5rem'
-      }}>
-        <div style={{
-          maxWidth: '1400px',
-          margin: '0 auto',
-          display: 'flex',
-          gap: '0.25rem',
-          overflowX: 'auto'
-        }}>
-          {navTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  padding: '0.75rem 1rem',
-                  border: 'none',
-                  background: 'none',
-                  borderBottom: isActive ? '3px solid var(--primary)' : '3px solid transparent',
-                  color: isActive ? 'var(--primary)' : 'var(--text-muted)',
-                  fontWeight: isActive ? 600 : 500,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease'
+              <StudioOverview
+                report={activeReport}
+                onSelectCitation={handleSelectCitation}
+                onSelectHotspot={(h) => {
+                  if (h.evidenceIds?.[0]) handleSelectCitation(h.evidenceIds[0]);
                 }}
-              >
-                <Icon size={16} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+                onFilterLedger={(status) => {
+                  navigate('/app/data-health');
+                }}
+                onOpenUpload={() => setIsUploadOpen(true)}
+                onLoadSample={(sampleName) => {
+                  const s = samples.find((x) => x.name === sampleName);
+                  if (s) handleLoadSampleAndCompare(s);
+                }}
+                onNavigateTab={(targetTab) => handleTabChange(targetTab)}
+              />
 
-      {/* Page Content */}
-      <main style={{ flex: 1, padding: '1.5rem', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
-        {!activeReport ? (
-          <div className="card" style={{ textAlign: 'center', padding: '4rem 1rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-              Welcome to VayuSetu Briefing Studio
-            </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '480px', margin: '0 auto 1.5rem auto' }}>
-              Upload an air quality CSV/XLSX dataset or load one of the pre-built sample Bhopal datasets to explore deterministic cleaning, grounded citations, and multi-role advisories.
-            </p>
-            <button
-              onClick={() => setIsUploadOpen(true)}
-              className="btn btn-primary"
-            >
-              Open Dataset Loader
-            </button>
-          </div>
-        ) : (
-          <div>
-            {/* Overview Tab */}
-            {activeTab === 'overview' && (
-              <div className="fade-in">
-                <DataQualityCard
-                  summary={activeReport.summary}
-                  onSelectHotspot={(h) => {
-                    if (h.evidenceIds?.[0]) handleSelectCitation(h.evidenceIds[0]);
-                  }}
-                />
-
-                <AirQualityMap
-                  locations={activeReport.summary?.locations || []}
-                  onSelectEvidence={handleSelectCitation}
-                />
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
-                  <FindingsList
-                    analysis={activeReport.analysis}
-                    onAnalyze={handleAnalyze}
-                    analyzing={analyzing}
-                    onSelectCitation={handleSelectCitation}
-                  />
-
-                  <ActionTracker
-                    recommendations={activeReport.recommendations || {}}
-                    roles={health?.roles || { ward_officer: 'Ward Officer', housing_society: 'Housing Society', school: 'School' }}
-                    activeRole={activeRole}
-                    onSelectRole={setActiveRole}
-                    onGenerateRecommendations={handleGenerateRecommendations}
-                    generating={generatingRecs}
-                    onUpdateAction={handleUpdateAction}
-                    onSelectCitation={handleSelectCitation}
-                  />
+              <div className="flex items-center justify-between pt-4 border-t border-obs-hairline">
+                <div>
+                  <h2 className="text-xl font-bold font-heading text-obs-ink">
+                    Executive Briefing & Key Findings
+                  </h2>
+                  <p className="text-xs text-obs-muted mt-0.5">
+                    Synthesized findings with verifiable row-level citations [R#].
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Cpu}
+                    onClick={handleRunPipeline}
+                    isLoading={runningPipeline}
+                  >
+                    Run 7-Agent Pipeline
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={Sparkles}
+                    onClick={handleAnalyze}
+                    isLoading={analyzing}
+                  >
+                    {activeReport.analysis ? 'Regenerate Analysis' : 'Generate Analysis'}
+                  </Button>
                 </div>
               </div>
-            )}
 
-            {/* Grounded Findings Tab */}
-            {activeTab === 'analysis' && (
-              <div className="fade-in">
-                <FindingsList
-                  analysis={activeReport.analysis}
-                  onAnalyze={handleAnalyze}
-                  analyzing={analyzing}
-                  onSelectCitation={handleSelectCitation}
-                />
-              </div>
-            )}
+              <FindingsList
+                analysis={activeReport.analysis}
+                onSelectCitation={handleSelectCitation}
+              />
+            </div>
+          )}
 
-            {/* Comparison Tab */}
-            {activeTab === 'comparison' && (
-              <div className="fade-in">
-                <ComparisonView
-                  comparison={activeReport.comparison}
-                  reports={reports}
-                  currentReportId={activeReport.id}
-                  onCompare={handleCompare}
-                  comparing={comparing}
-                  onSelectCitation={handleSelectCitation}
-                  onOpenUpload={() => setIsUploadOpen(true)}
-                  samples={samples}
-                  onLoadSample={handleLoadSampleAndCompare}
-                />
-              </div>
-            )}
+          {/* TAB 2: New Brief / Upload */}
+          {activeTab === 'new-brief' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <Card className="p-8 text-center max-w-2xl mx-auto space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-teal-primary/10 text-teal-primary flex items-center justify-center mx-auto">
+                  <PlusCircle className="w-6 h-6" />
+                </div>
+                <h2 className="text-2xl font-bold font-heading text-ink-900 dark:text-cream-100">
+                  Upload Air Quality Dataset
+                </h2>
+                <p className="text-sm text-ink-600 dark:text-cream-300">
+                  Drop CSV, TXT, Excel or whitespace-delimited logs. SchemaAgent handles Hindi headers and unit discrepancies deterministically.
+                </p>
+                <div className="pt-2">
+                  <Button variant="primary" size="lg" onClick={() => setIsUploadOpen(true)}>
+                    Open Dataset Ingestion Wizard
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )}
 
-            {/* Action Tracker Tab */}
-            {activeTab === 'actions' && (
-              <div className="fade-in">
-                <ActionTracker
-                  recommendations={activeReport.recommendations || {}}
-                  roles={health?.roles || { ward_officer: 'Ward Officer', housing_society: 'Housing Society', school: 'School' }}
-                  activeRole={activeRole}
-                  onSelectRole={setActiveRole}
-                  onGenerateRecommendations={handleGenerateRecommendations}
-                  generating={generatingRecs}
-                  onUpdateAction={handleUpdateAction}
-                  onSelectCitation={handleSelectCitation}
-                />
-              </div>
-            )}
+          {/* TAB 3: Data Health & Ledger */}
+          {activeTab === 'data-health' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <TableInterpretationPanel
+                report={activeReport}
+                onRemap={handleRemap}
+                remapping={remapping}
+              />
 
-            {/* Document Studio Tab */}
-            {activeTab === 'documents' && (
-              <div className="fade-in">
-                <DocumentStudio
-                  languages={health?.languages || { en: 'English', hi: 'Hindi' }}
-                  levels={health?.levels || ['simple', 'standard', 'detailed']}
-                  roles={health?.roles || { ward_officer: 'Ward Officer', housing_society: 'Housing Society', school: 'School' }}
-                  onGenerate={handleGenerateDoc}
-                  generating={generatingDoc}
-                  documents={activeReport.documents || []}
-                  onSelectCitation={handleSelectCitation}
-                />
-              </div>
-            )}
+              <DataQualityCard
+                summary={activeReport.summary}
+                dataHealth={activeReport.dataHealth}
+                onSelectHotspot={(h) => {
+                  if (h.evidenceIds?.[0]) handleSelectCitation(h.evidenceIds[0]);
+                }}
+              />
 
-            {/* Readings Ledger Tab */}
-            {activeTab === 'ledger' && (
-              <div className="fade-in">
-                <ReadingsTable
-                  readings={activeReport.readings || []}
-                  onSelectReading={(r) => setEvidenceReading(r)}
-                />
-              </div>
-            )}
+              <ReadingsTable
+                readings={activeReport.readings || []}
+                onSelectReading={setEvidenceReading}
+              />
+            </div>
+          )}
 
-            {/* Grounded Chat Tab */}
-            {activeTab === 'chat' && (
-              <div className="fade-in">
-                <GroundedChat
-                  onAsk={handleAsk}
-                  asking={asking}
-                  onSelectCitation={handleSelectCitation}
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </main>
+          {/* TAB 4: Hotspots & Spatial Map */}
+          {activeTab === 'hotspots' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <AirQualityMap
+                locations={activeReport.summary?.locations || []}
+                onSelectEvidence={handleSelectCitation}
+              />
+
+              <FindingsList
+                analysis={activeReport.analysis}
+                onSelectCitation={handleSelectCitation}
+              />
+            </div>
+          )}
+
+          {/* TAB 5: Role Action Tracker */}
+          {activeTab === 'actions' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <ActionTracker
+                report={activeReport}
+                roles={health?.roles || { ward_officer: 'Ward Officer', housing_society: 'Housing Society', school: 'School' }}
+                activeRole={activeRole}
+                onRoleChange={setActiveRole}
+                onGenerate={handleGenerateRecommendations}
+                onUpdateAction={handleUpdateAction}
+                onSelectCitation={handleSelectCitation}
+                generating={generatingRecs}
+              />
+            </div>
+          )}
+
+          {/* TAB 6: Temporal Comparison */}
+          {activeTab === 'compare' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <ComparisonView
+                currentReport={activeReport}
+                allReports={reports}
+                samples={samples}
+                comparison={activeReport.comparison}
+                onCompare={handleCompare}
+                onLoadSampleAndCompare={handleLoadSampleAndCompare}
+                comparing={comparing}
+                onSelectCitation={handleSelectCitation}
+              />
+            </div>
+          )}
+
+          {/* TAB 7: Document Studio */}
+          {activeTab === 'documents' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <DocumentStudio
+                languages={health?.languages || { en: 'English', hi: 'Hindi' }}
+                levels={health?.levels || ['simple', 'standard', 'detailed']}
+                roles={health?.roles || { ward_officer: 'Ward Officer', housing_society: 'Housing Society', school: 'School' }}
+                onGenerate={handleGenerateDoc}
+                generating={generatingDoc}
+                documents={activeReport.documents || []}
+                onSelectCitation={handleSelectCitation}
+              />
+            </div>
+          )}
+
+          {/* TAB 8: Grounded Assistant (RAG Chat) */}
+          {activeTab === 'assistant' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <GroundedChat
+                onAsk={handleAsk}
+                asking={asking}
+                onSelectCitation={handleSelectCitation}
+              />
+            </div>
+          )}
+
+          {/* TAB 9: AI Workbench */}
+          {activeTab === 'workbench' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <Card className="p-6">
+                <div className="flex items-center justify-between pb-4 border-b border-ink-900/[0.08] dark:border-cream-100/[0.08]">
+                  <div>
+                    <h2 className="text-lg font-bold font-heading text-ink-900 dark:text-cream-100 flex items-center gap-2">
+                      <Cpu className="w-5 h-5 text-teal-primary" />
+                      Multi-Agent Pipeline Workspace
+                    </h2>
+                    <p className="text-xs text-ink-600 dark:text-cream-300 mt-0.5">
+                      Inspect execution telemetry, latency, token consumption, and code guardrails across all 7 autonomous agents.
+                    </p>
+                  </div>
+                  <Button variant="primary" icon={Cpu} onClick={handleRunPipeline} isLoading={runningPipeline}>
+                    Run All 7 Agents
+                  </Button>
+                </div>
+
+                <div className="mt-4 flex items-center gap-3">
+                  <Button variant="secondary" size="sm" onClick={() => setIsWorkbenchOpen(true)}>
+                    Open Full-Screen AI Workbench Drawer
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Slide-over Evidence Traceability Drawer */}
       <EvidenceDrawer
         reading={evidenceReading}
         onClose={() => setEvidenceReading(null)}
+      />
+
+      {/* Multi-Agent AI Workbench Drawer */}
+      <AIWorkbenchDrawer
+        isOpen={isWorkbenchOpen}
+        onClose={() => setIsWorkbenchOpen(false)}
+        trace={activeReport?.pipelineTrace}
+        verification={activeReport?.verification}
+        onRunPipeline={handleRunPipeline}
+        running={runningPipeline}
       />
 
       {/* Dataset Upload Modal */}
@@ -479,6 +647,23 @@ export default function App() {
         onUploadSuccess={handleUploadSuccess}
         samples={samples}
       />
-    </div>
+    </AppShell>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/styleguide" element={<StyleguidePage />} />
+        <Route path="/app" element={<Navigate to="/app/dashboard" replace />} />
+        <Route path="/app/:tab" element={<StudioApp />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

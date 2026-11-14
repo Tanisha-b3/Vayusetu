@@ -13,6 +13,9 @@ client/node_modules/
 client/.env
 client/.env.local
 client/.env.*.local
+server/.env
+server/.env.local
+server/.env.*.local
 *.pem
 *.key
 
@@ -29,6 +32,7 @@ temp/
 dist/
 client/dist/
 build/
+.vercel/
 
 # Logs
 logs/

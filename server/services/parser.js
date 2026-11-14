@@ -3,10 +3,30 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
 export function parseText(text) {
-  const clean = String(text).replace(/^\uFEFF/, '');
-  // Papa auto-detects comma / tab / semicolon / pipe (pasted Excel is tab separated)
+  const clean = String(text ?? '').replace(/^\uFEFF/, '').trim();
+  if (!clean) return { table: [] };
+
+  // 1. First pass: PapaParse handles CSV, TSV, semicolon, and pipe
   const res = Papa.parse(clean, { skipEmptyLines: false });
-  return { table: res.data };
+  let table = res.data;
+
+  // 2. Second pass fallback: If table only has 1 column OR cells contain multi-space delimiters that PapaParse missed
+  const hasMultiSpaceCells = table.some((r) => Array.isArray(r) && r.some((c) => /\s{2,}/.test(String(c))));
+  const maxCols = Math.max(0, ...table.map((r) => (Array.isArray(r) ? r.length : 0)));
+
+  if (maxCols <= 1 || hasMultiSpaceCells) {
+    const lines = clean.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    const splitTable = lines.map((line) => {
+      return line.split(/\t+|\s{2,}/).map((c) => c.trim()).filter((c) => c.length > 0);
+    });
+
+    const splitMaxCols = Math.max(0, ...splitTable.map((r) => r.length));
+    if (splitMaxCols > maxCols) {
+      table = splitTable;
+    }
+  }
+
+  return { table };
 }
 
 function parseSheet(buffer) {
