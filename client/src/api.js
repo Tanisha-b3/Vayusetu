@@ -16,6 +16,21 @@ export async function fetchReport(id) {
   return res.json();
 }
 
+// Reads an error response. Returns the server's JSON `error` when present; otherwise
+// describes the status so non-JSON responses (proxy/hosting limits such as HTTP 413) are visible.
+async function readErrorMessage(res, fallback) {
+  const text = await res.text().catch(() => '');
+  try {
+    const json = JSON.parse(text);
+    if (json && json.error) return json.error;
+  } catch {
+    /* not JSON */
+  }
+  const statusPart = res.status ? ` (HTTP ${res.status}${res.statusText ? ' ' + res.statusText : ''})` : '';
+  const hint = res.status === 413 ? ' The file is too large for the server.' : '';
+  return `${fallback}${statusPart}.${hint}`;
+}
+
 export async function uploadReportFile(file, { city, reportDate, name } = {}) {
   const data = new FormData();
   data.append('file', file);
@@ -23,26 +38,36 @@ export async function uploadReportFile(file, { city, reportDate, name } = {}) {
   if (reportDate) data.append('reportDate', reportDate);
   if (name) data.append('name', name);
 
-  const res = await fetch(`${API_BASE}/reports`, {
-    method: 'POST',
-    body: data,
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/reports`, {
+      method: 'POST',
+      body: data,
+    });
+  } catch (netErr) {
+    throw new Error('Server connection error: Cannot reach backend on port 5000. Please start backend with "npm run dev".');
+  }
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to upload report');
+    throw new Error(await readErrorMessage(res, 'Failed to upload report'));
   }
   return res.json();
 }
 
 export async function uploadReportText({ text, name, city, reportDate }) {
-  const res = await fetch(`${API_BASE}/reports`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, name, city, reportDate }),
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/reports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, name, city, reportDate }),
+    });
+  } catch (netErr) {
+    throw new Error('Server connection error: Cannot reach backend on port 5000. Please start backend with "npm run dev".');
+  }
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to submit report text');
+    throw new Error(await readErrorMessage(res, 'Failed to submit report text'));
   }
   return res.json();
 }

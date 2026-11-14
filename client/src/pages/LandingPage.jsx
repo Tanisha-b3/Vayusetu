@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Wind,
@@ -29,6 +29,8 @@ import {
   Sparkle,
   Sun,
   Moon,
+  Menu,
+  X,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { Badge, AQIBadge, ConfidenceBadge, Button } from '../components/ui';
@@ -41,11 +43,15 @@ export default function LandingPage() {
   const [readingLevel, setReadingLevel] = useState('standard');
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isDark, setIsDark] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+  }, [isDark]);
 
   // Toggle Theme
   const toggleTheme = () => {
     setIsDark(!isDark);
-    document.documentElement.classList.toggle('dark');
   };
 
   const handleLaunchDemo = (role = 'ward_officer') => {
@@ -147,15 +153,15 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F5F0] dark:bg-[#0B1513] text-[#10201C] dark:text-[#F7F5F0] transition-colors duration-300 relative overflow-hidden font-body selection:bg-teal-primary selection:text-white">
+    <div className="min-h-screen bg-[#F7FAF9] dark:bg-[#0B1513] text-[#10201C] dark:text-[#F7F5F0] transition-colors duration-300 relative overflow-hidden font-body selection:bg-teal-primary selection:text-white">
       {/* Background Animated Atmosphere */}
       <div className="atmospheric-haze" />
 
       {/* Sticky Top Navigation */}
-      <nav className="sticky top-0 z-40 backdrop-blur-md bg-[#F7F5F0]/85 dark:bg-[#0B1513]/85 border-b border-[#10201C]/10 dark:border-white/10 px-4 sm:px-8 py-3.5 transition-colors">
+      <nav className="sticky top-0 z-40 border-b border-[#10201C]/[0.07] bg-white/90 px-4 py-3.5 shadow-[0_2px_12px_rgba(16,32,28,0.035)] backdrop-blur-xl transition-colors dark:border-white/10 dark:bg-[#0B1513]/90 sm:px-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-teal-primary flex items-center justify-center text-white shadow-md shadow-teal-primary/20">
+            <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-primary text-white shadow-md shadow-teal-primary/20">
               <Wind className="w-5 h-5 animate-pulse-slow" />
             </div>
             <div>
@@ -163,32 +169,41 @@ export default function LandingPage() {
                 <span className="font-heading font-bold text-xl tracking-tight text-[#10201C] dark:text-white">
                   VayuSetu
                 </span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-teal-primary/10 text-teal-primary dark:bg-teal-primary/20 dark:text-teal-400 font-semibold font-devanagari">
-                  à¤µà¤¾à¤¯à¥à¤¸à¥‡à¤¤à¥
+                <span className="hidden rounded-full bg-teal-primary/10 px-2 py-0.5 font-devanagari text-xs font-semibold text-teal-primary dark:bg-teal-primary/20 dark:text-teal-400 sm:inline">
+                  {'\u0935\u093E\u092F\u0941\u0938\u0947\u0924\u0941'}
                 </span>
               </div>
-              <p className="text-[10px] text-ink-600 dark:text-cream-400 uppercase tracking-wider font-semibold">
-                AI Civic Air Studio â€¢ CPCB Guardrails
+              <p className="hidden text-[10px] font-semibold uppercase tracking-wider text-ink-600 dark:text-cream-400 sm:block">
+                AI Civic Air Studio <span aria-hidden="true">·</span> CPCB Guardrails
               </p>
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-ink-700 dark:text-cream-300">
-            <a href="#how-it-works" className="hover:text-teal-primary dark:hover:text-teal-400 transition-colors">
+          <div className="hidden md:flex items-center gap-1 rounded-full border border-[#10201C]/[0.06] bg-[#F7FAF9] p-1 text-sm font-medium text-ink-700 dark:border-white/10 dark:bg-white/5 dark:text-cream-300">
+            <a href="#how-it-works" className="rounded-full px-3 py-2 transition-colors hover:bg-white hover:text-teal-primary hover:shadow-sm dark:hover:bg-white/10 dark:hover:text-teal-400">
               How It Works
             </a>
-            <a href="#audiences" className="hover:text-teal-primary dark:hover:text-teal-400 transition-colors">
+            <a href="#audiences" className="rounded-full px-3 py-2 transition-colors hover:bg-white hover:text-teal-primary hover:shadow-sm dark:hover:bg-white/10 dark:hover:text-teal-400">
               Roles & Actions
             </a>
-            <a href="#guardrails" className="hover:text-teal-primary dark:hover:text-teal-400 transition-colors">
+            <a href="#guardrails" className="rounded-full px-3 py-2 transition-colors hover:bg-white hover:text-teal-primary hover:shadow-sm dark:hover:bg-white/10 dark:hover:text-teal-400">
               Citation Guardrails
             </a>
-            <a href="#multilingual" className="hover:text-teal-primary dark:hover:text-teal-400 transition-colors">
+            <a href="#multilingual" className="rounded-full px-3 py-2 transition-colors hover:bg-white hover:text-teal-primary hover:shadow-sm dark:hover:bg-white/10 dark:hover:text-teal-400">
               Languages
             </a>
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="rounded-xl border border-[#10201C]/10 p-2 text-ink-700 transition hover:bg-black/5 dark:border-white/10 dark:text-cream-300 dark:hover:bg-white/5 md:hidden"
+              aria-label={mobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen((open) => !open)}
+            >
+              {mobileNavOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </button>
             <button
               onClick={toggleTheme}
               aria-label="Toggle theme"
@@ -201,17 +216,17 @@ export default function LandingPage() {
               <Button
                 variant="primary"
                 size="sm"
+                iconRight={ArrowRight}
                 onClick={() => navigate('/app/dashboard')}
-                className="shadow-sm"
+                className="whitespace-nowrap shadow-sm"
               >
                 Go to Studio
-                <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
             ) : (
               <>
                 <Link
                   to="/login"
-                  className="text-sm font-medium text-ink-700 dark:text-cream-300 hover:text-teal-primary px-3 py-1.5 rounded-lg transition-colors"
+                  className="hidden rounded-lg px-3 py-1.5 text-sm font-medium text-ink-700 transition-colors hover:text-teal-primary dark:text-cream-300 sm:inline-flex"
                 >
                   Sign In
                 </Link>
@@ -219,15 +234,29 @@ export default function LandingPage() {
                   variant="primary"
                   size="sm"
                   onClick={() => handleLaunchDemo('ward_officer')}
-                  className="shadow-sm"
+                  className="whitespace-nowrap shadow-sm"
                 >
                   <Sparkles className="w-3.5 h-3.5 mr-1" />
-                  Instant Demo
+                  <span className="sm:hidden">Demo</span><span className="hidden sm:inline">Instant Demo</span>
                 </Button>
               </>
             )}
           </div>
         </div>
+        {mobileNavOpen && (
+          <div className="mx-auto mt-3 grid max-w-7xl gap-1 rounded-2xl border border-[#10201C]/10 bg-white p-2 shadow-lg dark:border-white/10 dark:bg-[#10201C] md:hidden">
+            {[
+              ['How It Works', '#how-it-works'],
+              ['Roles & Actions', '#audiences'],
+              ['Citation Guardrails', '#guardrails'],
+              ['Languages', '#multilingual'],
+            ].map(([label, href]) => (
+              <a key={href} href={href} onClick={() => setMobileNavOpen(false)} className="rounded-xl px-3 py-2.5 text-sm font-medium text-ink-800 transition hover:bg-cream-100 hover:text-teal-primary dark:text-cream-200 dark:hover:bg-ink-800">
+                {label}
+              </a>
+            ))}
+          </div>
+        )}
       </nav>
 
       {/* Hero Section */}
@@ -248,12 +277,12 @@ export default function LandingPage() {
                 Turn messy monitoring files into clear ward briefings, verified priorities, and practical guidance for residents.
               </p>
               <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center">
-                <Button variant="primary" size="lg" onClick={() => handleLaunchDemo('ward_officer')} className="justify-center bg-[#D8F06A] text-[#18352E] shadow-lg shadow-black/15 hover:bg-[#CBE85D]">
-                  <Sparkles className="h-4 w-4" /> Explore the live demo <ArrowRight className="h-4 w-4" />
+                <Button variant="primary" size="lg" icon={Sparkles} iconRight={ArrowRight} onClick={() => handleLaunchDemo('ward_officer')} className="whitespace-nowrap justify-center bg-[#D8F06A] text-[#18352E] shadow-lg shadow-black/15 hover:bg-[#CBE85D]">
+                  Explore the live demo
                 </Button>
                 <Link to="/signup">
-                  <Button variant="secondary" size="lg" className="w-full justify-center border-white/30 bg-white/10 text-white shadow-none backdrop-blur-sm hover:bg-white/20 dark:bg-white/10 dark:text-white sm:w-auto">
-                    Create an account <ArrowRight className="h-4 w-4" />
+                  <Button variant="secondary" size="lg" iconRight={ArrowRight} className="w-full whitespace-nowrap justify-center border-white/30 bg-white/10 text-white shadow-none backdrop-blur-sm hover:bg-white/20 dark:bg-white/10 dark:text-white sm:w-auto">
+                    Create an account
                   </Button>
                 </Link>
               </div>

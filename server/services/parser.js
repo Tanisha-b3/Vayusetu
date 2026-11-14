@@ -31,9 +31,33 @@ export function parseText(text) {
 
 function parseSheet(buffer) {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
-  const name = wb.SheetNames[0];
-  const table = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: true });
-  return { table, sheet: name };
+  if (!wb.SheetNames || wb.SheetNames.length === 0) {
+    return { table: [], sheet: '' };
+  }
+
+  // Find the sheet with the most rows / highest air quality signal
+  let bestSheet = wb.SheetNames[0];
+  let bestTable = [];
+  let maxScore = -1;
+
+  for (const name of wb.SheetNames) {
+    const table = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false });
+    if (!table || table.length === 0) continue;
+
+    // Score sheet: number of rows + presence of pollutant or location keywords
+    const flatText = table.slice(0, 15).flat().join(' ').toLowerCase();
+    let score = table.length;
+    if (flatText.includes('pm2') || flatText.includes('pm10') || flatText.includes('aqi') || flatText.includes('station') || flatText.includes('location')) {
+      score += 5000;
+    }
+    if (score > maxScore) {
+      maxScore = score;
+      bestSheet = name;
+      bestTable = table;
+    }
+  }
+
+  return { table: bestTable, sheet: bestSheet };
 }
 
 export function parseBuffer(buffer, filename = '') {

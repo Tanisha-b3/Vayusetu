@@ -87,9 +87,8 @@ export function UploadModal({ isOpen, onClose, onUploadSuccess, samples = [] }) 
       setStagedReport(rep);
       setCurrentStep(1); // Proceed to Interpret
     } catch (err) {
-      // If server is not reachable, provide fallback dataset
-      if (err.message.includes('Failed to submit') || err.message.includes('fetch') || err.message.includes('NetworkError')) {
-        setError('Server API offline or unreachable. Please start backend on port 5000 (npm run dev).');
+      if (err.message.includes('Server connection error') || err.message.includes('Failed to fetch') || err.message.includes('fetch')) {
+        setError('Backend server is not running on port 5000. Run "npm run dev" in a terminal to start the API.');
       } else {
         setError(err.message);
       }
@@ -241,15 +240,28 @@ export function UploadModal({ isOpen, onClose, onUploadSuccess, samples = [] }) 
                     <UploadCloud className="w-6 h-6 animate-pulse-slow" />
                   </div>
 
-                  <h4 className="font-display font-bold text-base text-obs-ink mb-1">
-                    {file ? file.name : 'Drop messy CPCB CSV or Text table here'}
-                  </h4>
+                  <div className="w-full max-w-full px-3 mb-2 overflow-hidden text-center">
+                    <h4
+                      className="font-display font-bold text-sm sm:text-base text-obs-ink truncate block"
+                      title={file ? file.name : 'Drop messy CPCB CSV or Text table here'}
+                    >
+                      {file ? file.name : 'Drop messy CPCB CSV or Text table here'}
+                    </h4>
+                    {file && (
+                      <span className="text-[11px] font-mono text-obs-teal font-semibold block mt-0.5">
+                        Selected: {(file.size / 1024).toFixed(1)} KB • Ready to inspect
+                      </span>
+                    )}
+                  </div>
+
                   <p className="text-xs text-obs-muted max-w-sm mb-4">
-                    Accepts unaligned tabs, spaces, missing headers, Hindi columns, and mixed units.
+                    {file
+                      ? 'Click Browse Machine to choose another file, or click Inspect & Harmonize below.'
+                      : 'Accepts unaligned tabs, spaces, missing headers, Hindi columns, and mixed units.'}
                   </p>
 
                   <Button variant="secondary" size="sm" type="button">
-                    Browse Machine
+                    {file ? 'Change File' : 'Browse Machine'}
                   </Button>
                 </div>
               )}

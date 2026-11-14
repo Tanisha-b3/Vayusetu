@@ -112,14 +112,14 @@ export function mapHeaders(headerRow, manualOverrides = {}) {
 }
 
 function findHeaderRowIndex(table, manualOverrides = {}) {
-  for (let i = 0; i < Math.min(10, table.length); i++) {
+  for (let i = 0; i < Math.min(25, table.length); i++) {
     const m = mapHeaders(table[i], manualOverrides).byField;
     if (m.location && (m.pm25 || m.pm10 || m.aqi)) return i;
   }
   // If not found deterministically, look for candidate row with highest number of non-numeric text columns
   let bestIdx = 0;
   let maxTextCols = 0;
-  for (let i = 0; i < Math.min(5, table.length); i++) {
+  for (let i = 0; i < Math.min(15, table.length); i++) {
     const row = table[i];
     if (Array.isArray(row)) {
       const textCols = row.filter((c) => String(c || '').trim().length > 1 && !/^-?\d+(?:\.\d+)?$/.test(String(c).trim())).length;

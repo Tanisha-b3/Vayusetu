@@ -45,6 +45,20 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: err.message, code: err.code });
 });
 
-app.listen(config.port, '0.0.0.0', () => console.log(`VayuSetu running on port ${config.port}`));
+const server = app.listen(config.port, '0.0.0.0', () => {
+  console.log(`VayuSetu running on port ${config.port}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE' || err.code === 'EACCES') {
+    const fallbackPort = config.port === 5000 ? 5001 : 5050;
+    console.warn(`Port ${config.port} is blocked/in-use (${err.code}). Retrying on fallback port ${fallbackPort}...`);
+    app.listen(fallbackPort, '0.0.0.0', () => {
+      console.log(`VayuSetu running on port ${fallbackPort}`);
+    });
+  } else {
+    console.error('Server listen error:', err);
+  }
+});
 
 export default app;
